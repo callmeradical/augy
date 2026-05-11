@@ -1,4 +1,4 @@
-name: Publish to npm
+name: Release
 
 on:
   push:
@@ -6,28 +6,13 @@ on:
       - 'v*'
 
 jobs:
-  ci:
-    name: Typecheck & Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build
-
-  publish:
-    name: Publish
-    needs: ci
+  release:
+    name: Typecheck · Build · Release · Publish
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write   # enables npm provenance attestation
+      contents: write   # create GitHub Release
+      id-token: write   # npm provenance attestation
+
     steps:
       - uses: actions/checkout@v4
 
@@ -37,10 +22,24 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - run: npm ci
-      - run: npm run build
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Publish @callmeradical/augy
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Create GitHub Release
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "augy ${{ github.ref_name }}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish to npm
         run: npm publish --access=public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
