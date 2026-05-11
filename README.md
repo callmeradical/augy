@@ -1,5 +1,9 @@
 # augy
 
+[![npm](https://img.shields.io/npm/v/@callmeradical/augy?label=%40callmeradical%2Faugy&color=7c3aed)](https://www.npmjs.com/package/@callmeradical/augy)
+[![license](https://img.shields.io/github/license/callmeradical/augy)](LICENSE)
+[![node](https://img.shields.io/node/v/@callmeradical/augy)](package.json)
+
 **Homebrew for AI agent skills** — install, version, update, and rollback skills across OpenCode, Claude, and Codex from a single CLI.
 
 ```
@@ -16,6 +20,8 @@ augy rollback tdd abc1234     # something broke — go back
 ```bash
 npm install -g @callmeradical/augy
 ```
+
+> The npm package is `@callmeradical/augy`. The CLI command is `augy`.
 
 Requires Node.js ≥ 18.
 
