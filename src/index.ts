@@ -4,6 +4,8 @@
  *
  * Commands:
  *   scan                       Find skills installed outside augy and import them
+ *   bundle                     Write augy.json manifest from installed skills
+ *   sync [path]                Install/update skills from an augy.json manifest
  *   install [url]              Install skills from a GitHub URL or bare name (via taps)
  *   update  [skill]            Check + upgrade skills with upstream changes
  *   list                       Show all installed skills + versions
@@ -86,6 +88,32 @@ program
   .action(async (skill: string, sha1?: string, sha2?: string) => {
     const { diffCommand } = await import('./commands/diff.js');
     await diffCommand(skill, sha1, sha2);
+  });
+
+// ---------------------------------------------------------------------------
+// bundle
+// ---------------------------------------------------------------------------
+program
+  .command('bundle')
+  .description('Write an augy.json manifest from installed skills for team sharing')
+  .option('-o, --output <path>', 'Output path (default: ./augy.json)')
+  .option('--include-untracked', 'Include skills without a known source')
+  .action(async (opts: { output?: string; includeUntracked?: boolean }) => {
+    const { bundleCommand } = await import('./commands/bundle.js');
+    await bundleCommand(opts);
+  });
+
+// ---------------------------------------------------------------------------
+// sync
+// ---------------------------------------------------------------------------
+program
+  .command('sync [path]')
+  .description('Install/update skills from an augy.json manifest (default: ./augy.json)')
+  .option('--dry-run', 'Preview changes without applying them')
+  .option('-a, --agent <agents...>', 'Target agent(s) (default: all detected)')
+  .action(async (path?: string, opts?: { dryRun?: boolean; agent?: string[] }) => {
+    const { syncCommand } = await import('./commands/sync.js');
+    await syncCommand(path, opts ?? {});
   });
 
 // ---------------------------------------------------------------------------

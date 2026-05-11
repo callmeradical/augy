@@ -12,7 +12,7 @@ import {
 import chalk from 'chalk';
 import { mkdir, rm } from 'fs/promises';
 
-import { AGENTS, agentSkillPath } from '../agents.js';
+import { AGENTS, agentSkillPath, detectInstalledAgents } from '../agents.js';
 import { discoverSkills, parseGitHubUrl, RemoteSkill } from '../github.js';
 import {
   createSkillRecord,
@@ -224,14 +224,17 @@ async function promptSkillSelection(
 }
 
 async function promptAgentSelection() {
-  return multiselect({
+  const detected = new Set(detectInstalledAgents().map((a) => a.id));
+  return filterableMultiselect({
     message: 'Install for which agents?',
     options: AGENTS.map((a) => ({
       value: a,
       label: a.name,
-      hint: chalk.dim(a.skillsPath),
+      hint: detected.has(a.id)
+        ? chalk.dim(a.skillsPath)
+        : chalk.dim('not detected'),
+      selected: detected.has(a.id),
     })),
-    required: true,
   });
 }
 

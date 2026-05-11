@@ -394,8 +394,8 @@
       </div>
       <div class="feature">
         <span class="feature-icon">⊞</span>
-        <h3>Multi-agent</h3>
-        <p>Deploy one skill to OpenCode, Claude, and Codex simultaneously. They update together.</p>
+        <h3>33 agents</h3>
+        <p>Auto-detects which agents are on your machine. Deploy one skill to all of them — they update together.</p>
       </div>
       <div class="feature">
         <span class="feature-icon">⌕</span>
@@ -411,6 +411,11 @@
         <span class="feature-icon">⊙</span>
         <h3>Scan &amp; import</h3>
         <p>Skills already on disk? Scan detects them, auto-discovers provenance, and brings them under management.</p>
+      </div>
+      <div class="feature">
+        <span class="feature-icon">⇄</span>
+        <h3>Team sync</h3>
+        <p><code style="color:var(--teal);font-family:var(--font-mono);font-size:.85em">augy bundle</code> creates an <code style="color:var(--teal);font-family:var(--font-mono);font-size:.85em">augy.json</code> manifest. Commit it. Teammates run <code style="color:var(--teal);font-family:var(--font-mono);font-size:.85em">augy sync</code>.</p>
       </div>
     </div>
   </div>
@@ -598,6 +603,46 @@
 
       <div class="cmd-card">
         <div class="cmd-header">
+          <span class="cmd-name">bundle</span>
+          <span class="cmd-sig">[--output &lt;path&gt;]</span>
+        </div>
+        <div class="cmd-body">
+          <p>Write an <code style="color:var(--teal);font-family:var(--font-mono);font-size:.9em">augy.json</code> manifest from installed skills. Commit it so teammates can reproduce your exact skill set.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> bundle
+<span class="hl-cmd">augy</span> bundle <span class="hl-flag">--output</span> <span class="hl-arg">~/team/augy.json</span>
+<span class="hl-cmd">augy</span> bundle <span class="hl-flag">--include-untracked</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+          <div class="code-block" style="margin-top:.75rem"><pre><span class="hl-comment">// augy.json</span>
+{
+  <span class="hl-flag">"version"</span>: 1,
+  <span class="hl-flag">"skills"</span>: {
+    <span class="hl-str">"tdd"</span>: <span class="hl-str">"mattpocock/skills/skills/engineering/tdd"</span>,
+    <span class="hl-str">"commit"</span>: <span class="hl-str">"org/repo/skills/commit"</span>
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">sync</span>
+          <span class="cmd-sig">[path] [--dry-run]</span>
+        </div>
+        <div class="cmd-body">
+          <p>Install and update skills from an <code style="color:var(--teal);font-family:var(--font-mono);font-size:.9em">augy.json</code> manifest. Skills not in the manifest are left alone — nothing is auto-removed.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> sync
+<span class="hl-cmd">augy</span> sync <span class="hl-arg">~/team/augy.json</span>
+<span class="hl-cmd">augy</span> sync <span class="hl-flag">--dry-run</span>       <span class="hl-comment"># preview only</span>
+<span class="hl-cmd">augy</span> sync <span class="hl-flag">--agent</span> <span class="hl-arg">opencode claude</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
           <span class="cmd-name">set-source</span>
           <span class="cmd-sig">&lt;skill&gt; &lt;url&gt;</span>
         </div>
@@ -644,34 +689,59 @@
 <section id="agents">
   <div class="container">
     <div class="section-label">Agents</div>
-    <h2>Supported agents</h2>
-    <p>A single skill can be deployed to multiple agents simultaneously and stays in sync on every update.</p>
-    <table class="agent-table">
-      <thead>
-        <tr>
-          <th>Agent</th>
-          <th>Default skills path</th>
-          <th>Override</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><span class="agent-name">OpenCode</span></td>
-          <td><span class="agent-path">~/.opencode/skills/</span></td>
-          <td>—</td>
-        </tr>
-        <tr>
-          <td><span class="agent-name">Claude</span></td>
-          <td><span class="agent-path">~/.claude/skills/</span></td>
-          <td>—</td>
-        </tr>
-        <tr>
-          <td><span class="agent-name">Codex</span></td>
-          <td><span class="agent-path">~/.codex/skills/</span></td>
-          <td><span class="agent-env">$CODEX_HOME/skills</span></td>
-        </tr>
-      </tbody>
-    </table>
+    <h2>33 agents supported</h2>
+    <p>augy auto-detects which agents are installed on your machine and pre-selects them in the install prompt. A single skill can be deployed to multiple agents simultaneously.</p>
+
+    <div style="margin-top:2rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="background:var(--bg-card);padding:1.25rem">
+        <div style="font-size:.7rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:.75rem">Tier 1</div>
+        <div style="display:flex;flex-direction:column;gap:.4rem;font-size:.875rem">
+          <div><span style="color:var(--text);font-weight:500">Claude</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.claude/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">OpenCode</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.opencode/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Codex</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.codex/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Cursor</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.cursor/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Windsurf</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.codeium/windsurf/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">GitHub Copilot</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.github/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Gemini CLI</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.gemini/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Goose</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.goose/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Amp</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.agents/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Roo Code</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.roo/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Cline</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.cline/skills/</span></div>
+        </div>
+      </div>
+      <div style="background:var(--bg-card);padding:1.25rem">
+        <div style="font-size:.7rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:.75rem">Tier 2</div>
+        <div style="display:flex;flex-direction:column;gap:.4rem;font-size:.875rem">
+          <div><span style="color:var(--text);font-weight:500">Kiro</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.kiro/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Kimi CLI</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.kimi/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Kilo Code</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.kilocode/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Trae</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.trae/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Trae CN</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.trae-cn/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Augment</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.augment/rules/</span></div>
+          <div><span style="color:var(--text);font-weight:500">OpenHands</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.openhands/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Replit</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.replit/skills/</span></div>
+          <div><span style="color:var(--text);font-weight:500">Crush</span> <span style="color:var(--dim);font-family:var(--font-mono);font-size:.75rem">~/.config/crush/skills/</span></div>
+        </div>
+      </div>
+      <div style="background:var(--bg-card);padding:1.25rem">
+        <div style="font-size:.7rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:.75rem">Tier 3</div>
+        <div style="display:flex;flex-direction:column;gap:.4rem;font-size:.875rem;columns:2;column-gap:1.5rem">
+          <div><span style="color:var(--muted)">Antigravity</span></div>
+          <div><span style="color:var(--muted)">Droid</span></div>
+          <div><span style="color:var(--muted)">OpenClaw</span></div>
+          <div><span style="color:var(--muted)">CodeBuddy</span></div>
+          <div><span style="color:var(--muted)">Command Code</span></div>
+          <div><span style="color:var(--muted)">Kode</span></div>
+          <div><span style="color:var(--muted)">Mistral Vibe</span></div>
+          <div><span style="color:var(--muted)">Mux</span></div>
+          <div><span style="color:var(--muted)">OpenClaude IDE</span></div>
+          <div><span style="color:var(--muted)">Qoder</span></div>
+          <div><span style="color:var(--muted)">Qwen Code</span></div>
+          <div><span style="color:var(--muted)">Neovate</span></div>
+          <div><span style="color:var(--muted)">AdaL</span></div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
