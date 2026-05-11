@@ -14,7 +14,7 @@ augy rollback tdd abc1234     # something broke — go back
 ## Install
 
 ```bash
-npm install -g augy
+npm install -g @callmeradical/augy
 ```
 
 Requires Node.js ≥ 18.

@@ -1,5 +1,5 @@
 {
-  "name": "augy",
+  "name": "@callmeradical/augy",
   "version": "0.1.0",
   "description": "Homebrew for AI agent skills — install, version, update, rollback",
   "type": "module",
@@ -14,8 +14,14 @@
     "url": "https://github.com/callmeradical/augy/issues"
   },
   "keywords": [
-    "ai", "skills", "cli", "package-manager",
-    "opencode", "claude", "codex", "agent"
+    "ai",
+    "skills",
+    "cli",
+    "package-manager",
+    "opencode",
+    "claude",
+    "codex",
+    "agent"
   ],
   "files": [
     "dist/**/*",
