@@ -1,0 +1,31 @@
+{
+  "name": "augy",
+  "version": "0.1.0",
+  "description": "Homebrew for AI agent skills — install, version, update, rollback",
+  "type": "module",
+  "bin": {
+    "augy": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --outDir dist --clean",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.9.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "diff": "^9.0.0",
+    "giget": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>augy — Homebrew for AI agent skills</title>
+  <meta name="description" content="Install, version, update, and rollback AI agent skills across OpenCode, Claude, and Codex from a single CLI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #09090b;
+      --bg-card:   #111113;
+      --bg-code:   #0d0d0f;
+      --border:    #27272a;
+      --border-hi: #3f3f46;
+      --purple:    #a78bfa;
+      --purple-d:  #7c3aed;
+      --teal:      #2dd4bf;
+      --green:     #4ade80;
+      --yellow:    #fbbf24;
+      --red:       #f87171;
+      --text:      #fafafa;
+      --muted:     #a1a1aa;
+      --dim:       #52525b;
+      --radius:    10px;
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--purple); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Nav ─────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 2rem;
+      padding: 0 2rem; height: 56px;
+      background: rgba(9,9,11,.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      font-family: var(--font-mono);
+      font-weight: 600; font-size: 1rem;
+      color: var(--text);
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .nav-logo .diamond { color: var(--purple); }
+    .nav-links { display: flex; gap: 1.5rem; list-style: none; margin-left: auto; }
+    .nav-links a { color: var(--muted); font-size: .875rem; font-weight: 500; transition: color .15s; }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+    .nav-badge {
+      margin-left: auto;
+      background: var(--purple-d); color: #fff;
+      font-size: .75rem; font-weight: 600; font-family: var(--font-mono);
+      padding: .25rem .65rem; border-radius: 999px;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; }
+    section { padding: 6rem 0; }
+    section + section { border-top: 1px solid var(--border); }
+
+    h2 {
+      font-size: 2rem; font-weight: 700; letter-spacing: -.03em;
+      margin-bottom: 1rem;
+    }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: .5rem; }
+    p { color: var(--muted); line-height: 1.7; }
+    p + p { margin-top: .75rem; }
+
+    /* ── Hero ────────────────────────────────────────────────── */
+    #hero { padding: 7rem 0 5rem; text-align: center; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: rgba(124,58,237,.15); border: 1px solid rgba(124,58,237,.35);
+      color: var(--purple); font-size: .8rem; font-weight: 500;
+      padding: .3rem .75rem; border-radius: 999px; margin-bottom: 2rem;
+    }
+    #hero h1 {
+      font-size: clamp(3rem, 7vw, 5.5rem);
+      font-weight: 800; letter-spacing: -.05em; line-height: 1;
+      margin-bottom: 1.25rem;
+    }
+    #hero h1 span { color: var(--purple); }
+    #hero .tagline {
+      font-size: 1.2rem; color: var(--muted); max-width: 520px; margin: 0 auto 2.5rem;
+    }
+    .hero-install {
+      display: inline-flex; align-items: center; gap: 1rem;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: .75rem 1.25rem;
+      font-family: var(--font-mono); font-size: .95rem;
+      color: var(--green); margin-bottom: 3.5rem;
+    }
+    .hero-install .prompt { color: var(--dim); }
+    .copy-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--dim); transition: color .15s; padding: 0; line-height: 1;
+    }
+    .copy-btn:hover { color: var(--muted); }
+    .copy-btn.copied { color: var(--green); }
+
+    /* Terminal window */
+    .terminal {
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      max-width: 640px; margin: 0 auto;
+      text-align: left;
+      box-shadow: 0 25px 60px rgba(0,0,0,.6);
+    }
+    .terminal-bar {
+      background: #1c1c1e; padding: .75rem 1rem;
+      display: flex; align-items: center; gap: .5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .terminal-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+    }
+    .terminal-dot.red    { background: #ff5f56; }
+    .terminal-dot.yellow { background: #ffbd2e; }
+    .terminal-dot.green  { background: #27c93f; }
+    .terminal-title {
+      flex: 1; text-align: center;
+      font-family: var(--font-mono); font-size: .75rem; color: var(--dim);
+    }
+    .terminal-body { padding: 1.25rem 1.5rem; font-family: var(--font-mono); font-size: .85rem; line-height: 1.8; min-height: 200px; }
+    .t-prompt { color: var(--purple); }
+    .t-cmd    { color: var(--text); }
+    .t-arg    { color: var(--teal); }
+    .t-out    { color: var(--muted); }
+    .t-ok     { color: var(--green); }
+    .t-warn   { color: var(--yellow); }
+    .t-sha    { color: var(--dim); }
+    .t-cursor { display: inline-block; width: 8px; height: 1em; background: var(--purple); vertical-align: text-bottom; animation: blink 1s step-end infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* ── Features ────────────────────────────────────────────── */
+    #features .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1px; background: var(--border);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; margin-top: 3rem;
+    }
+    .feature {
+      background: var(--bg-card); padding: 1.75rem;
+      transition: background .2s;
+    }
+    .feature:hover { background: #151518; }
+    .feature-icon {
+      font-size: 1.5rem; margin-bottom: .75rem;
+      display: block;
+    }
+    .feature h3 { color: var(--text); font-size: 1rem; margin-bottom: .4rem; }
+    .feature p  { font-size: .875rem; color: var(--muted); }
+
+    /* ── Quickstart ──────────────────────────────────────────── */
+    #quickstart .steps {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem; margin-top: 3rem;
+    }
+    .step {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+    }
+    .step-num {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--purple-d); color: #fff;
+      font-size: .8rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: .75rem;
+    }
+    .step h3 { font-size: .95rem; color: var(--text); margin-bottom: .5rem; }
+
+    /* ── Code blocks ─────────────────────────────────────────── */
+    .code-block {
+      position: relative;
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      margin-top: .75rem;
+    }
+    .code-block pre {
+      padding: 1rem 1.25rem;
+      font-family: var(--font-mono); font-size: .825rem;
+      line-height: 1.75; overflow-x: auto; color: var(--text);
+    }
+    .code-copy {
+      position: absolute; top: .6rem; right: .6rem;
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--dim); font-size: .75rem; font-weight: 500;
+      padding: .25rem .6rem; border-radius: 6px; cursor: pointer;
+      transition: all .15s; font-family: 'Inter', sans-serif;
+    }
+    .code-copy:hover { color: var(--muted); border-color: var(--border-hi); }
+    .code-copy.copied { color: var(--green); border-color: var(--green); }
+
+    .hl-comment { color: var(--dim); }
+    .hl-cmd     { color: var(--purple); font-weight: 500; }
+    .hl-arg     { color: var(--teal); }
+    .hl-flag    { color: var(--yellow); }
+    .hl-str     { color: var(--green); }
+    .hl-sha     { color: var(--dim); }
+
+    /* ── Commands ────────────────────────────────────────────── */
+    #commands .section-intro { max-width: 600px; margin-bottom: 3rem; }
+    .cmd-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+      gap: 1.5rem;
+    }
+    .cmd-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      transition: border-color .2s;
+    }
+    .cmd-card:hover { border-color: var(--border-hi); }
+    .cmd-header {
+      padding: 1rem 1.25rem;
+      display: flex; align-items: baseline; gap: .75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .cmd-name {
+      font-family: var(--font-mono); font-size: .9rem; font-weight: 600;
+      color: var(--purple);
+    }
+    .cmd-sig {
+      font-family: var(--font-mono); font-size: .8rem; color: var(--dim);
+    }
+    .cmd-body { padding: 1rem 1.25rem; }
+    .cmd-body p { font-size: .875rem; color: var(--muted); margin-bottom: .75rem; }
+
+    /* ── Agents ──────────────────────────────────────────────── */
+    #agents .agent-table {
+      width: 100%; border-collapse: collapse;
+      margin-top: 2rem; font-size: .875rem;
+    }
+    .agent-table th {
+      text-align: left; padding: .75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted); font-weight: 500; font-size: .8rem;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .agent-table td {
+      padding: .75rem 1rem; border-bottom: 1px solid var(--border);
+    }
+    .agent-table tr:last-child td { border-bottom: none; }
+    .agent-table tr { background: var(--bg-card); }
+    .agent-table tr:hover { background: #151518; }
+    .agent-name { font-weight: 600; color: var(--text); }
+    .agent-path { font-family: var(--font-mono); font-size: .8rem; color: var(--teal); }
+    .agent-env  { font-family: var(--font-mono); font-size: .8rem; color: var(--dim); }
+
+    /* ── Registry ────────────────────────────────────────────── */
+    #registry .registry-tree {
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+      font-family: var(--font-mono); font-size: .85rem; line-height: 1.9;
+      margin-top: 2rem;
+    }
+    .tree-dir   { color: var(--purple); }
+    .tree-file  { color: var(--teal); }
+    .tree-desc  { color: var(--dim); }
+    .tree-key   { color: var(--yellow); }
+    .tree-val   { color: var(--green); }
+
+    /* ── Env vars ────────────────────────────────────────────── */
+    .env-table {
+      width: 100%; border-collapse: collapse; margin-top: 2rem; font-size: .875rem;
+    }
+    .env-table th {
+      text-align: left; padding: .75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted); font-size: .8rem; font-weight: 500;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .env-table td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
+    .env-table tr:last-child td { border-bottom: none; }
+    .env-table tr { background: var(--bg-card); }
+    .env-var { font-family: var(--font-mono); color: var(--yellow); }
+    .env-default { font-family: var(--font-mono); color: var(--dim); }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2.5rem 0; text-align: center;
+      color: var(--dim); font-size: .875rem;
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--text); }
+
+    /* ── Section label ───────────────────────────────────────── */
+    .section-label {
+      font-size: .75rem; font-weight: 600; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--purple);
+      margin-bottom: .75rem;
+    }
+
+    @media (max-width: 640px) {
+      nav { padding: 0 1rem; gap: 1rem; }
+      .nav-links { display: none; }
+      #hero h1 { font-size: 2.75rem; }
+      .cmd-grid { grid-template-columns: 1fr; }
+      section { padding: 4rem 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-logo">
+    <span class="diamond">◆</span> augy
+  </div>
+  <ul class="nav-links">
+    <li><a href="#quickstart">Quickstart</a></li>
+    <li><a href="#commands">Commands</a></li>
+    <li><a href="#agents">Agents</a></li>
+    <li><a href="#registry">Registry</a></li>
+    <li><a href="https://github.com/lhagen-isb/augy">GitHub</a></li>
+  </ul>
+  <span class="nav-badge">v0.1.0</span>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────────────────── -->
+<section id="hero">
+  <div class="container">
+    <div class="hero-badge">◆ Homebrew for AI agent skills</div>
+    <h1>Package management<br>for <span>AI skills</span></h1>
+    <p class="tagline">Install, version, update, and rollback skills across OpenCode, Claude, and Codex — from a single CLI.</p>
+
+    <div class="hero-install">
+      <span class="prompt">$</span>
+      <span id="install-cmd">npm install -g augy</span>
+      <button class="copy-btn" onclick="copyInstall(this)" title="Copy">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="terminal-dot red"></div>
+        <div class="terminal-dot yellow"></div>
+        <div class="terminal-dot green"></div>
+        <span class="terminal-title">terminal</span>
+      </div>
+      <div class="terminal-body" id="terminal-body">
+        <div id="term-lines"></div>
+        <span class="t-cursor"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Features ─────────────────────────────────────────────────── -->
+<section id="features">
+  <div class="container">
+    <div class="section-label">Why augy</div>
+    <h2>Everything a skill deserves</h2>
+    <p>AI agents load skills from local directories. augy brings the discipline of a package manager to that chaos.</p>
+    <div class="grid">
+      <div class="feature">
+        <span class="feature-icon">◆</span>
+        <h3>SHA-based versioning</h3>
+        <p>Every install tracks the exact GitHub commit SHA. Drift is detected the moment upstream changes.</p>
+      </div>
+      <div class="feature">
+        <span class="feature-icon">⟳</span>
+        <h3>Safe updates</h3>
+        <p>Before overwriting, augy snapshots the current version. Roll back to any point in history.</p>
+      </div>
+      <div class="feature">
+        <span class="feature-icon">⊞</span>
+        <h3>Multi-agent</h3>
+        <p>Deploy one skill to OpenCode, Claude, and Codex simultaneously. They update together.</p>
+      </div>
+      <div class="feature">
+        <span class="feature-icon">⌕</span>
+        <h3>Taps</h3>
+        <p>Register trusted repos. Then <code style="color:var(--teal);font-family:var(--font-mono)">augy install tdd</code> — no URL needed.</p>
+      </div>
+      <div class="feature">
+        <span class="feature-icon">≠</span>
+        <h3>Diff browser</h3>
+        <p>Interactive file-level diffs between any two versions. Know exactly what changed before upgrading.</p>
+      </div>
+      <div class="feature">
+        <span class="feature-icon">⊙</span>
+        <h3>Scan &amp; import</h3>
+        <p>Skills already on disk? Scan detects them, auto-discovers provenance, and brings them under management.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Quickstart ────────────────────────────────────────────────── -->
+<section id="quickstart">
+  <div class="container">
+    <div class="section-label">Get started</div>
+    <h2>Up in three steps</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Install</h3>
+        <div class="code-block">
+          <pre><span class="hl-str">npm install -g augy</span></pre>
+          <button class="code-copy" onclick="copyCode(this)">copy</button>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Add a tap</h3>
+        <div class="code-block">
+          <pre><span class="hl-cmd">augy</span> tap add <span class="hl-arg">mattpocock/skills</span></pre>
+          <button class="code-copy" onclick="copyCode(this)">copy</button>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Install a skill</h3>
+        <div class="code-block">
+          <pre><span class="hl-cmd">augy</span> install <span class="hl-arg">tdd</span></pre>
+          <button class="code-copy" onclick="copyCode(this)">copy</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:2.5rem">
+      <h3 style="margin-bottom:.75rem">Or scan what you already have</h3>
+      <p>If you've been installing skills manually, augy can find and import them:</p>
+      <div class="code-block" style="max-width:480px;margin-top:.75rem">
+        <pre><span class="hl-cmd">augy</span> scan    <span class="hl-comment"># finds untracked skills, detects provenance</span></pre>
+        <button class="code-copy" onclick="copyCode(this)">copy</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Commands ──────────────────────────────────────────────────── -->
+<section id="commands">
+  <div class="container">
+    <div class="section-label">Reference</div>
+    <h2>Commands</h2>
+    <p class="section-intro">All commands support <code style="color:var(--teal);font-family:var(--font-mono);font-size:.85em">--help</code> for inline documentation.</p>
+
+    <div class="cmd-grid">
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">install</span>
+          <span class="cmd-sig">[url] [--agent &lt;agents...&gt;]</span>
+        </div>
+        <div class="cmd-body">
+          <p>Install skills from a GitHub URL, shorthand, or bare name via taps. Shows a filterable multi-select when a repo contains multiple skills.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> install <span class="hl-arg">tdd</span>
+<span class="hl-cmd">augy</span> install <span class="hl-arg">mattpocock/skills</span>
+<span class="hl-cmd">augy</span> install <span class="hl-arg">https://github.com/org/repo/tree/main</span>
+<span class="hl-cmd">augy</span> install <span class="hl-arg">tdd</span> <span class="hl-flag">--agent</span> opencode claude</pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">scan</span>
+        </div>
+        <div class="cmd-body">
+          <p>Walk all agent skill directories, find untracked skills, auto-detect provenance via git remotes and frontmatter, then import them into the registry.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> scan</pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">update</span>
+          <span class="cmd-sig">[skill]</span>
+        </div>
+        <div class="cmd-body">
+          <p>Check all installed skills for upstream SHA drift, show available upgrades, archive the current version, then deploy the new one.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> update
+<span class="hl-cmd">augy</span> update <span class="hl-arg">tdd</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">diff</span>
+          <span class="cmd-sig">&lt;skill&gt; [sha1] [sha2]</span>
+        </div>
+        <div class="cmd-body">
+          <p>Interactive file-level diff browser. Three modes: installed vs upstream, installed vs a specific SHA, or two local archives.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> diff <span class="hl-arg">tdd</span>
+<span class="hl-cmd">augy</span> diff <span class="hl-arg">tdd</span> <span class="hl-sha">abc1234</span>
+<span class="hl-cmd">augy</span> diff <span class="hl-arg">tdd</span> <span class="hl-sha">abc1234</span> <span class="hl-sha">def5678</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">rollback</span>
+          <span class="cmd-sig">&lt;skill&gt; [sha]</span>
+        </div>
+        <div class="cmd-body">
+          <p>Restore a skill to a previously archived version. Without a SHA, presents an interactive picker of available snapshots.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> rollback <span class="hl-arg">tdd</span>
+<span class="hl-cmd">augy</span> rollback <span class="hl-arg">tdd</span> <span class="hl-sha">abc1234</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">list</span>
+        </div>
+        <div class="cmd-body">
+          <p>Show all installed skills with SHAs, agents, update timestamps, and version history counts.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> list
+<span class="hl-cmd">augy</span> list <span class="hl-flag">--json</span>   <span class="hl-comment"># raw registry JSON</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">info</span>
+          <span class="cmd-sig">&lt;skill&gt;</span>
+        </div>
+        <div class="cmd-body">
+          <p>Full metadata view: source, tap, SHA, install/update dates, per-agent paths with existence check, version history, and SKILL.md description preview.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> info <span class="hl-arg">tdd</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">search</span>
+          <span class="cmd-sig">[query]</span>
+        </div>
+        <div class="cmd-body">
+          <p>Search all registered taps for available skills. Shows each skill's SHA and whether it's installed and up to date.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> search
+<span class="hl-cmd">augy</span> search <span class="hl-arg">tdd</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">tap</span>
+          <span class="cmd-sig">add | remove | list</span>
+        </div>
+        <div class="cmd-body">
+          <p>Manage trusted repos. Once tapped, skills can be installed by bare name. Validated on add by fetching the skill index.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> tap add <span class="hl-arg">mattpocock/skills</span>
+<span class="hl-cmd">augy</span> tap add <span class="hl-arg">org/repo</span> <span class="hl-flag">--path</span> skills/engineering
+<span class="hl-cmd">augy</span> tap list
+<span class="hl-cmd">augy</span> tap remove <span class="hl-arg">mattpocock/skills</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">set-source</span>
+          <span class="cmd-sig">&lt;skill&gt; &lt;url&gt;</span>
+        </div>
+        <div class="cmd-body">
+          <p>Attach a GitHub URL to a skill imported without one. Accepts tree and blob URLs. Enables updates, diffs, and rollbacks going forward.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> set-source <span class="hl-arg">commit</span> <span class="hl-str">https://github.com/org/repo/tree/main/skills/commit</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">uninstall</span>
+          <span class="cmd-sig">&lt;skill&gt;</span>
+        </div>
+        <div class="cmd-body">
+          <p>Remove a skill from all agent paths and the registry. Optionally prune archived versions from the version store.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> uninstall <span class="hl-arg">tdd</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span class="cmd-name">pin</span>
+          <span class="cmd-sig">/ unpin &lt;skill&gt;</span>
+        </div>
+        <div class="cmd-body">
+          <p>Pin a skill to freeze it at the current version, skipping it during <code style="color:var(--teal);font-family:var(--font-mono);font-size:.9em">augy update</code>.</p>
+          <div class="code-block"><pre><span class="hl-cmd">augy</span> pin <span class="hl-arg">tdd</span>
+<span class="hl-cmd">augy</span> unpin <span class="hl-arg">tdd</span></pre>
+            <button class="code-copy" onclick="copyCode(this)">copy</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── Agents ─────────────────────────────────────────────────────── -->
+<section id="agents">
+  <div class="container">
+    <div class="section-label">Agents</div>
+    <h2>Supported agents</h2>
+    <p>A single skill can be deployed to multiple agents simultaneously and stays in sync on every update.</p>
+    <table class="agent-table">
+      <thead>
+        <tr>
+          <th>Agent</th>
+          <th>Default skills path</th>
+          <th>Override</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="agent-name">OpenCode</span></td>
+          <td><span class="agent-path">~/.opencode/skills/</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><span class="agent-name">Claude</span></td>
+          <td><span class="agent-path">~/.claude/skills/</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><span class="agent-name">Codex</span></td>
+          <td><span class="agent-path">~/.codex/skills/</span></td>
+          <td><span class="agent-env">$CODEX_HOME/skills</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── Registry ───────────────────────────────────────────────────── -->
+<section id="registry">
+  <div class="container">
+    <div class="section-label">Internals</div>
+    <h2>The registry</h2>
+    <p>augy stores all state in a single human-readable JSON lockfile at <code style="color:var(--teal);font-family:var(--font-mono);font-size:.875em">~/.augy/registry.json</code>. You can read, diff, and commit it just like any other config file.</p>
+    <p>Version archives are stored as plain directory snapshots — no binary formats, no databases.</p>
+
+    <div class="registry-tree">
+<span class="tree-dir">~/.augy/</span>
+  <span class="tree-file">registry.json</span>   <span class="tree-desc">← lockfile — source of truth for all installed skills</span>
+  <span class="tree-dir">versions/</span>
+    <span class="tree-dir">tdd/</span>
+      <span class="tree-dir">7afa86d.../</span>    <span class="tree-desc">← snapshot before last upgrade</span>
+      <span class="tree-dir">abc1234.../</span>    <span class="tree-desc">← older snapshot</span>
+    <span class="tree-dir">commit/</span>
+      <span class="tree-dir">def5678.../</span>
+    </div>
+
+    <div style="margin-top:2.5rem">
+      <h3 style="margin-bottom:1rem">Environment variables</h3>
+      <table class="env-table">
+        <thead>
+          <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="env-var">AUGY_HOME</span></td>
+            <td><span class="env-default">~/.augy</span></td>
+            <td style="color:var(--muted)">Override augy's home directory</td>
+          </tr>
+          <tr>
+            <td><span class="env-var">CODEX_HOME</span></td>
+            <td><span class="env-default">~/.codex</span></td>
+            <td style="color:var(--muted)">Override Codex agent path</td>
+          </tr>
+          <tr>
+            <td><span class="env-var">GITHUB_TOKEN</span></td>
+            <td><span class="env-default">—</span></td>
+            <td style="color:var(--muted)">Raise GitHub API rate limit from 60 → 5,000 req/hr</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────────────────────── -->
+<footer>
+  <div class="container">
+    <p>
+      <strong style="color:var(--muted)">augy</strong> &nbsp;·&nbsp;
+      MIT License &nbsp;·&nbsp;
+      <a href="https://github.com/lhagen-isb/augy">GitHub</a> &nbsp;·&nbsp;
+      <a href="https://github.com/lhagen-isb/augy/issues">Issues</a>
+    </p>
+  </div>
+</footer>
+
+<script>
+  // ── Copy helpers ────────────────────────────────────────────────
+  function copyInstall(btn) {
+    navigator.clipboard.writeText('npm install -g augy');
+    btn.classList.add('copied');
+    setTimeout(() => btn.classList.remove('copied'), 2000);
+  }
+
+  function copyCode(btn) {
+    const pre = btn.previousElementSibling;
+    navigator.clipboard.writeText(pre.textContent.trim());
+    const orig = btn.textContent;
+    btn.textContent = 'copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+  }
+
+  // ── Terminal animation ──────────────────────────────────────────
+  const lines = [
+    { text: '$ augy tap add mattpocock/skills', cls: 't-cmd', delay: 0 },
+    { text: '◆  Tap mattpocock/skills added  (28 skills available)', cls: 't-ok', delay: 700 },
+    { text: '', cls: '', delay: 900 },
+    { text: '$ augy search tdd', cls: 't-cmd', delay: 1000 },
+    { text: '  mattpocock/skills', cls: 't-out', delay: 1700 },
+    { text: '  tdd       @7afa86d  ✓ up to date', cls: 't-ok', delay: 1900 },
+    { text: '', cls: '', delay: 2100 },
+    { text: '$ augy install tdd --agent opencode claude', cls: 't-cmd', delay: 2200 },
+    { text: '  Discovering skills… done', cls: 't-out', delay: 2900 },
+    { text: '  ✓ tdd  @7afa86d', cls: 't-ok', delay: 3300 },
+    { text: '', cls: '', delay: 3500 },
+    { text: '$ augy update', cls: 't-cmd', delay: 3600 },
+    { text: '  1 skill has updates available:', cls: 't-out', delay: 4300 },
+    { text: '  tdd  7afa86d → b843cb5', cls: 't-warn', delay: 4500 },
+    { text: '  ✓ tdd upgraded  @b843cb5', cls: 't-ok', delay: 5200 },
+  ];
+
+  const container = document.getElementById('term-lines');
+  lines.forEach(({ text, cls, delay }) => {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.className = cls;
+      el.textContent = text;
+      container.appendChild(el);
+      container.parentElement.scrollTop = container.parentElement.scrollHeight;
+    }, delay + 600);
+  });
+</script>
+</body>
+</html>
