@@ -18,6 +18,10 @@
  *   uninstall <skill>          Remove a skill from agents + registry
  *   pin <skill>                Pin a skill so it is skipped during updates
  *   unpin <skill>              Unpin a previously pinned skill
+ *   home set <repo>            Set your personal home repo for skill backup
+ *   home push                  Push your skills manifest to the home repo
+ *   home pull                  Fetch and sync skills from the home repo
+ *   home show                  Show the current home repo configuration
  */
 
 import { Command } from 'commander';
@@ -230,6 +234,49 @@ program
   .description('Allow a pinned skill to receive updates again')
   .action(async (skill: string) => {
     await setPinned(skill, false);
+  });
+
+// ---------------------------------------------------------------------------
+// home (nested subcommands)
+// ---------------------------------------------------------------------------
+const home = program
+  .command('home')
+  .description('Manage a personal GitHub repo for backing up your skills manifest');
+
+home
+  .command('set <repo>')
+  .description('Set the home repo  e.g. augy home set alice/my-skills')
+  .option('--path <file>', 'Manifest path within the repo (default: augy.json)')
+  .option('--skills-path <dir>', 'Dir for authored skills in the repo (default: skills)')
+  .action(async (repo: string, opts: { path?: string; skillsPath?: string }) => {
+    const { homeSetCommand } = await import('./commands/home.js');
+    await homeSetCommand(repo, opts);
+  });
+
+home
+  .command('push')
+  .description('Push your installed skills manifest to the home repo')
+  .action(async () => {
+    const { homePushCommand } = await import('./commands/home.js');
+    await homePushCommand();
+  });
+
+home
+  .command('pull')
+  .description('Fetch the manifest from the home repo and sync skills')
+  .option('--dry-run', 'Preview changes without applying them')
+  .option('-a, --agent <agents...>', 'Target agent(s) (default: all detected)')
+  .action(async (opts: { dryRun?: boolean; agent?: string[] }) => {
+    const { homePullCommand } = await import('./commands/home.js');
+    await homePullCommand(opts);
+  });
+
+home
+  .command('show')
+  .description('Show the current home repo configuration')
+  .action(async () => {
+    const { homeShowCommand } = await import('./commands/home.js');
+    await homeShowCommand();
   });
 
 // ---------------------------------------------------------------------------

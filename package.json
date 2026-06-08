@@ -1,6 +1,6 @@
 {
   "name": "@callmeradical/augy",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Homebrew for AI agent skills — install, version, update, rollback",
   "type": "module",
   "license": "MIT",
@@ -35,7 +35,9 @@
     "build": "tsup src/index.ts --format esm --outDir dist --clean",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@clack/prompts": "^0.9.0",
@@ -47,9 +49,11 @@
   "devDependencies": {
     "@types/diff": "^7.0.2",
     "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.8",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.8"
   },
   "engines": {
     "node": ">=18"

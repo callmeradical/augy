@@ -68,10 +68,24 @@ export interface Tap {
   description?: string;
 }
 
+export interface HomeConfig {
+  /** "owner/repo" of the personal home repository */
+  repo: string;
+  /** Path within the repo where the augy.json manifest lives (default: augy.json) */
+  path: string;
+  /**
+   * Directory within the repo where self-authored skill directories are stored.
+   * Empty string means the repo root. Default: "skills".
+   */
+  skillsPath: string;
+}
+
 export interface Registry {
   version: 1;
   taps: Record<string, Tap>;   // key: "owner/repo"
   skills: Record<string, RegistrySkill>;
+  /** Personal home repo for push/pull of the skills manifest */
+  home?: HomeConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,4 +213,16 @@ export function addTap(registry: Registry, tap: Tap): void {
 
 export function removeTap(registry: Registry, key: string): void {
   delete registry.taps[key];
+}
+
+// ---------------------------------------------------------------------------
+// Home config helpers
+// ---------------------------------------------------------------------------
+
+export function getHomeConfig(registry: Registry): HomeConfig | undefined {
+  return registry.home;
+}
+
+export function setHomeConfig(registry: Registry, config: HomeConfig): void {
+  registry.home = config;
 }

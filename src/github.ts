@@ -275,6 +275,85 @@ export function buildGigetSource(owner: string, repo: string, path: string, ref?
 }
 
 // ---------------------------------------------------------------------------
+// GitHub Contents API — read/write files
+// ---------------------------------------------------------------------------
+
+export interface RepoFile {
+  /** Decoded UTF-8 content */
+  content: string;
+  /** Blob SHA required when updating the file via PUT */
+  blobSha: string;
+}
+
+/**
+ * Fetch a single file from a GitHub repo via the Contents API.
+ * Returns null if the file does not exist (404).
+ * Throws on other HTTP errors.
+ */
+export async function getFileFromRepo(
+  owner: string,
+  repo: string,
+  path: string,
+): Promise<RepoFile | null> {
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const res = await fetch(url, { headers: apiHeaders() });
+
+  if (res.status === 404) return null;
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`GitHub API ${res.status}: ${url}\n${body}`);
+  }
+
+  const data = (await res.json()) as { sha: string; content: string; encoding: string };
+  const content = Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
+  return { content, blobSha: data.sha };
+}
+
+export interface PutResult {
+  /** Commit SHA of the resulting commit */
+  commitSha: string;
+}
+
+/**
+ * Create or update a file in a GitHub repo via the Contents API.
+ * Requires a GITHUB_TOKEN with `contents: write` permission.
+ *
+ * @param blobSha - Required when updating an existing file (from getFileFromRepo).
+ *                  Omit (or pass undefined) when creating a new file.
+ */
+export async function putFileToRepo(
+  owner: string,
+  repo: string,
+  path: string,
+  content: string,
+  message: string,
+  blobSha?: string,
+): Promise<PutResult> {
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+
+  const body: Record<string, string> = {
+    message,
+    content: Buffer.from(content).toString('base64'),
+  };
+  if (blobSha) body['sha'] = blobSha;
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`GitHub API ${res.status}: ${url}\n${text}`);
+  }
+
+  const data = (await res.json()) as { commit: { sha: string } };
+  return { commitSha: data.commit.sha };
+}
+
+// ---------------------------------------------------------------------------
 // Download
 // ---------------------------------------------------------------------------
 
