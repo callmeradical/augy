@@ -35,7 +35,8 @@ jobs:
         run: |
           gh release create ${{ github.ref_name }} \
             --title "augy ${{ github.ref_name }}" \
-            --generate-notes
+            --generate-notes \
+          || gh release view ${{ github.ref_name }} --json tagName --jq '.tagName' > /dev/null
         env:
           GH_TOKEN: ${{ github.token }}
 
