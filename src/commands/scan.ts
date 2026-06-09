@@ -76,7 +76,7 @@ export async function scanCommand(): Promise<void> {
   s.stop(`Scanned ${AGENTS.length} agent(s)`);
 
   // -------------------------------------------------------------------------
-  // 2. Separate tracked from untracked
+  // 2. Separate tracked from untracked; find additional agent installs
   // -------------------------------------------------------------------------
   const untracked: UntrackedSkill[] = [];
   for (const [name, agents] of onDisk) {
@@ -84,6 +84,8 @@ export async function scanCommand(): Promise<void> {
       untracked.push({ name, agents });
     }
   }
+
+  const additionalInstalls = findAdditionalAgentInstalls(onDisk, registry);
 
   const tracked = listSkills(registry);
 
@@ -325,6 +327,42 @@ export async function scanCommand(): Promise<void> {
       ? chalk.green(`${importedCount} skill(s) imported into augy`)
       : chalk.dim('No skills imported.'),
   );
+
+  // -------------------------------------------------------------------------
+  // 8. Register additional agent paths for already-tracked skills
+  // -------------------------------------------------------------------------
+  if (additionalInstalls.length) {
+    console.log(
+      `\n  ${chalk.bold('Additional installs found')}` +
+      chalk.dim(` (${additionalInstalls.length} skill(s) installed in new agent(s))`) +
+      '\n',
+    );
+
+    for (const { skillName, newAgents } of additionalInstalls) {
+      console.log(`  ${chalk.cyan.bold(skillName)}`);
+      for (const { agent, path } of newAgents) {
+        console.log(`    ${chalk.bold(agent.name.padEnd(10))}  ${chalk.dim(tildefy(path))}`);
+      }
+    }
+    console.log();
+
+    const doRegister = await confirm({
+      message: 'Register these additional agent paths in the registry?',
+    });
+    if (!isCancel(doRegister) && doRegister) {
+      let registered = 0;
+      for (const { skillName, newAgents } of additionalInstalls) {
+        const skill = getSkill(registry, skillName)!;
+        for (const { agent, path } of newAgents) {
+          skill.agents[agent.id] = { path, active: true };
+          registered++;
+        }
+        registry.skills[skillName] = skill;
+        await writeRegistry(registry);
+      }
+      console.log(chalk.green(`\n  ✓ Registered ${registered} additional path(s)`));
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -435,6 +473,39 @@ async function readSkillDescription(skillPath: string): Promise<string | undefin
     }
   } catch { /* ignore */ }
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Deduplication helpers (exported for testing)
+// ---------------------------------------------------------------------------
+
+export interface AdditionalInstall {
+  skillName: string;
+  newAgents: UntrackedSkill['agents'];
+}
+
+/**
+ * For each skill already in the registry, find agent paths that exist on
+ * disk but are not yet registered. These represent the same skill installed
+ * manually for additional agents outside of augy.
+ */
+export function findAdditionalAgentInstalls(
+  onDisk: Map<string, UntrackedSkill['agents']>,
+  registry: Registry,
+): AdditionalInstall[] {
+  const result: AdditionalInstall[] = [];
+
+  for (const [name, agents] of onDisk) {
+    const tracked = getSkill(registry, name);
+    if (!tracked) continue; // untracked — handled by the main scan pass
+
+    const newAgents = agents.filter((a) => !tracked.agents[a.agent.id]);
+    if (newAgents.length) {
+      result.push({ skillName: name, newAgents });
+    }
+  }
+
+  return result;
 }
 
 /** Replace home dir with ~ for compact display */
