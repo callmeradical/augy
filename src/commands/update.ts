@@ -63,13 +63,19 @@ export async function updateCommand(nameArg?: string): Promise<void> {
     return;
   }
 
-  // Skip authored skills (no external source — managed via `augy home push/pull`)
-  const authored = unpinned.filter((s) => !s.source);
-  const withSource = unpinned.filter((s) => s.source);
+  // Skip authored skills and skills whose source points at the home repo
+  // (stale entries from pre-0.6.0 — run `augy home push` to clean them up)
+  const homeRepo = registry.home?.repo;
+  const authored = unpinned.filter(
+    (s) => !s.source || (homeRepo && s.source.includes(homeRepo)),
+  );
+  const withSource = unpinned.filter(
+    (s) => s.source && !(homeRepo && s.source.includes(homeRepo)),
+  );
 
   if (authored.length) {
     console.log(
-      chalk.dim(`Skipping ${authored.length} authored skill(s): `) +
+      chalk.dim(`Skipping ${authored.length} authored skill(s) — run \`augy home push\` to re-sync: `) +
         chalk.dim(authored.map((s) => s.name).join(', ')),
     );
   }
