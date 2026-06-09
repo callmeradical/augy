@@ -38,10 +38,10 @@ import {
   listSkills,
   readRegistry,
   setHomeConfig,
+  skillMatchesContext,
   upsertSkill,
   writeRegistry,
 } from '../registry.js';
-// upsertSkill is used in homePullCommand
 import { cloneRepo, gitAddAll, gitCommit, gitPush, repoToUrl } from '../git.js';
 import type { AugyBundle } from './bundle.js';
 import { agentSkillPath, detectInstalledAgents, AGENTS } from '../agents.js';
@@ -196,7 +196,7 @@ interface PullSkill {
 }
 
 export async function homePullCommand(
-  opts: { dryRun?: boolean; agent?: string[] } = {},
+  opts: { dryRun?: boolean; agent?: string[]; context?: string } = {},
 ): Promise<void> {
   intro(chalk.bold('augy') + chalk.dim(' — home pull'));
 
@@ -247,14 +247,24 @@ export async function homePullCommand(
   // -------------------------------------------------------------------------
   // Skill picker
   // -------------------------------------------------------------------------
+  // Look up context tags from the registry for authored skills
+  const currentRegistry = await readRegistry();
+
   const selected = await filterableMultiselect<PullSkill>({
     message: `Select skills to install  ${chalk.dim(`(${available.length} available)`)}`,
-    options: available.map((sk) => ({
-      value:    sk,
-      label:    sk.name,
-      hint:     sk.isAuthored ? chalk.dim('authored') : chalk.dim(sk.source),
-      selected: true,
-    })),
+    options: available.map((sk) => {
+      const record   = currentRegistry.skills[sk.name];
+      const contexts = record?.contexts ?? [];
+      const matches  = skillMatchesContext(contexts, opts.context);
+      const ctxHint  = contexts.length ? chalk.dim(contexts.join(', ')) : '';
+      const srcHint  = sk.isAuthored ? chalk.dim('authored') : chalk.dim(sk.source);
+      return {
+        value:    sk,
+        label:    sk.name,
+        hint:     [ctxHint, srcHint].filter(Boolean).join('  '),
+        selected: matches,
+      };
+    }),
   });
 
   if (isCancel(selected) || !(selected as PullSkill[]).length) {

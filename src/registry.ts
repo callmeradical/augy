@@ -47,6 +47,12 @@ export interface RegistrySkill {
   updatedAt: string;
   /** Whether augy should skip this skill during `augy update` */
   pinned: boolean;
+  /**
+   * Machine/environment contexts this skill belongs to.
+   * e.g. ['work'], ['personal'], ['universal'], ['work', 'personal']
+   * Empty or undefined = universal (shown on every machine).
+   */
+  contexts?: string[];
   /** Which agents have this skill deployed, keyed by agent ID */
   agents: Record<string, AgentInstall>;
   /** Ordered list of previous versions (oldest first) */
@@ -213,6 +219,29 @@ export function addTap(registry: Registry, tap: Tap): void {
 
 export function removeTap(registry: Registry, key: string): void {
   delete registry.taps[key];
+}
+
+// ---------------------------------------------------------------------------
+// Context helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if the skill should be included for the given context filter.
+ *
+ * Rules:
+ *  - No filter (undefined) → always matches
+ *  - No contexts on skill (undefined or []) → always matches (treated as universal)
+ *  - Skill has 'universal' → always matches
+ *  - Otherwise → matches if contexts includes the requested context
+ */
+export function skillMatchesContext(
+  skillContexts: string[] | undefined,
+  filter: string | undefined,
+): boolean {
+  if (!filter) return true;
+  if (!skillContexts || skillContexts.length === 0) return true;
+  if (skillContexts.includes('universal')) return true;
+  return skillContexts.includes(filter);
 }
 
 // ---------------------------------------------------------------------------

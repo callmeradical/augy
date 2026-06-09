@@ -237,6 +237,34 @@ program
   });
 
 // ---------------------------------------------------------------------------
+// tag
+// ---------------------------------------------------------------------------
+const tagCmd = program
+  .command('tag [skill] [contexts...]')
+  .description('Set or show context tags on a skill  (personal / work / universal / custom)')
+  .action(async (skill?: string, contexts?: string[]) => {
+    if (!skill) {
+      tagCmd.help();
+      return;
+    }
+    if (contexts?.length) {
+      const { tagSetCommand } = await import('./commands/tag.js');
+      await tagSetCommand(skill, contexts);
+    } else {
+      const { tagShowCommand } = await import('./commands/tag.js');
+      await tagShowCommand(skill);
+    }
+  });
+
+program
+  .command('tag migrate')
+  .description('Interactively assign context tags to all untagged skills')
+  .action(async () => {
+    const { tagMigrateCommand } = await import('./commands/tag.js');
+    await tagMigrateCommand();
+  });
+
+// ---------------------------------------------------------------------------
 // author (nested subcommands)
 // ---------------------------------------------------------------------------
 const author = program
@@ -290,7 +318,8 @@ home
   .description('Fetch the manifest from the home repo and sync skills')
   .option('--dry-run', 'Preview changes without applying them')
   .option('-a, --agent <agents...>', 'Target agent(s) (default: all detected)')
-  .action(async (opts: { dryRun?: boolean; agent?: string[] }) => {
+  .option('--context <ctx>', 'Pre-select only skills matching this context (e.g. work, personal)')
+  .action(async (opts: { dryRun?: boolean; agent?: string[]; context?: string }) => {
     const { homePullCommand } = await import('./commands/home.js');
     await homePullCommand(opts);
   });

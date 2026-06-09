@@ -366,6 +366,50 @@ describe('homePullCommand', () => {
     expect(syncCommand).not.toHaveBeenCalled();
   });
 
+  it('pre-selects only matching skills when --context is provided', async () => {
+    existsSync.mockReturnValue(true);
+    readRegistry.mockResolvedValue(makeRegistry({
+      home: { repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' },
+      skills: {
+        tdd:    makeSkill('tdd',    '', undefined),
+        commit: makeSkill('commit', '', undefined),
+      },
+    }));
+    const { readdir, readFile } = await import('fs/promises');
+    (readdir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: 'tdd',    isDirectory: () => true },
+      { name: 'commit', isDirectory: () => true },
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({ version: 1, skills: { tdd: '', commit: '' } }),
+    );
+
+    // Simulate: tdd is universal, commit is personal
+    const { getSkill } = await import('../registry.js');
+    (getSkill as ReturnType<typeof vi.fn>) || undefined; // not mocked, registry used
+
+    // Override registry to have contexts
+    const regWithContexts = makeRegistry({
+      home: { repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' },
+      skills: {
+        tdd:    { ...makeSkill('tdd',    ''), contexts: ['universal'] } as ReturnType<typeof makeSkill> & { contexts: string[] },
+        commit: { ...makeSkill('commit', ''), contexts: ['personal']  } as ReturnType<typeof makeSkill> & { contexts: string[] },
+      },
+    });
+    readRegistry.mockResolvedValue(regWithContexts);
+
+    await (homePullCommand as (opts: { context?: string }) => Promise<void>)({ context: 'work' });
+
+    // filterableMultiselect should have been called with commit pre-deselected
+    const pickerOpts = filterableMultiselect.mock.calls[0]![0] as {
+      options: Array<{ label: string; selected: boolean }>;
+    };
+    const tddOpt    = pickerOpts.options.find((o) => o.label === 'tdd');
+    const commitOpt = pickerOpts.options.find((o) => o.label === 'commit');
+    expect(tddOpt?.selected).toBe(true);    // universal → matches work
+    expect(commitOpt?.selected).toBe(false); // personal → does not match work
+  });
+
   it('respects --agent flag and skips agent picker', async () => {
     existsSync.mockReturnValue(true);
     readRegistry.mockResolvedValue(makeRegistry({
