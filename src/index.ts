@@ -237,27 +237,30 @@ program
   });
 
 // ---------------------------------------------------------------------------
-// tag
+// tag (nested subcommands)
 // ---------------------------------------------------------------------------
-const tagCmd = program
-  .command('tag [skill] [contexts...]')
-  .description('Set or show context tags on a skill  (personal / work / universal / custom)')
-  .action(async (skill?: string, contexts?: string[]) => {
-    if (!skill) {
-      tagCmd.help();
-      return;
-    }
-    if (contexts?.length) {
-      const { tagSetCommand } = await import('./commands/tag.js');
-      await tagSetCommand(skill, contexts);
-    } else {
-      const { tagShowCommand } = await import('./commands/tag.js');
-      await tagShowCommand(skill);
-    }
+const tag = program
+  .command('tag')
+  .description('Manage skill context tags  (personal / work / universal / custom)');
+
+tag
+  .command('set <skill> [contexts...]')
+  .description('Set context tags on a skill  e.g. augy tag set tdd work universal')
+  .action(async (skill: string, contexts: string[]) => {
+    const { tagSetCommand } = await import('./commands/tag.js');
+    await tagSetCommand(skill, contexts ?? []);
   });
 
-program
-  .command('tag migrate')
+tag
+  .command('show <skill>')
+  .description('Show current context tags for a skill')
+  .action(async (skill: string) => {
+    const { tagShowCommand } = await import('./commands/tag.js');
+    await tagShowCommand(skill);
+  });
+
+tag
+  .command('migrate')
   .description('Interactively assign context tags to all untagged skills')
   .action(async () => {
     const { tagMigrateCommand } = await import('./commands/tag.js');
