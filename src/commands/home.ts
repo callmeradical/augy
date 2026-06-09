@@ -116,6 +116,23 @@ export async function homePushCommand(): Promise<void> {
   }
 
   const allSkills = listSkills(registry);
+
+  // Re-classify skills whose source points back at the home repo — these are
+  // authored skills that got a stale home-repo URL from a pre-0.6.0 push.
+  // Clear their source so they're treated correctly going forward.
+  let reclassified = 0;
+  for (const skill of allSkills) {
+    if (skill.source && skill.source.includes(home.repo)) {
+      skill.source      = '';
+      skill.gigetSource = '';
+      skill.sha         = 'unversioned';
+      skill.shortSha    = 'unversio';
+      registry.skills[skill.name] = skill;
+      reclassified++;
+    }
+  }
+  if (reclassified) await writeRegistry(registry);
+
   // Self-authored: no external source. Their files get committed to the home repo.
   const authored  = allSkills.filter((s) => !s.source);
   // Externally sourced: record in the manifest only.

@@ -63,15 +63,31 @@ export async function updateCommand(nameArg?: string): Promise<void> {
     return;
   }
 
+  // Skip authored skills (no external source — managed via `augy home push/pull`)
+  const authored = unpinned.filter((s) => !s.source);
+  const withSource = unpinned.filter((s) => s.source);
+
+  if (authored.length) {
+    console.log(
+      chalk.dim(`Skipping ${authored.length} authored skill(s): `) +
+        chalk.dim(authored.map((s) => s.name).join(', ')),
+    );
+  }
+
+  if (!withSource.length) {
+    outro(chalk.dim('No externally-sourced skills to update.'));
+    return;
+  }
+
   // Check each skill for updates
   const s = spinner();
-  s.start(`Checking ${unpinned.length} skill(s) for updates…`);
+  s.start(`Checking ${withSource.length} skill(s) for updates…`);
 
   const candidates: UpdateCandidate[] = [];
   const errors: { name: string; err: string }[] = [];
 
   await Promise.allSettled(
-    unpinned.map(async (skill) => {
+    withSource.map(async (skill) => {
       try {
         const coords = parseGitHubUrl(skill.source);
         const remote = await discoverSkills(coords);
