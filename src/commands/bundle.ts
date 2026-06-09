@@ -24,6 +24,11 @@ export interface AugyBundle {
    * Empty string means source is unknown — fill in before sharing.
    */
   skills: Record<string, string>;
+  /**
+   * Map of skill name → context tags (personal / work / universal / custom).
+   * Omitted when all skills are untagged.
+   */
+  contexts?: Record<string, string[]>;
 }
 
 const DEFAULT_FILENAME = 'augy.json';

@@ -158,6 +158,14 @@ export async function homePushCommand(): Promise<void> {
   for (const skill of authored) {
     bundle.skills[skill.name] = '';
   }
+
+  // Persist context tags in the manifest so they're applied on pull
+  const contextEntries = allSkills
+    .filter((s) => s.contexts && s.contexts.length > 0)
+    .map((s) => [s.name, s.contexts!] as [string, string[]]);
+  if (contextEntries.length) {
+    bundle.contexts = Object.fromEntries(contextEntries);
+  }
   await writeFile(
     join(cloneDir, home.path),
     JSON.stringify(bundle, null, 2) + '\n',
@@ -171,17 +179,29 @@ export async function homePushCommand(): Promise<void> {
   s2.start('Committing and pushing…');
   await gitAddAll(cloneDir);
 
-  const skillCount = allSkills.length;
+  const skillCount   = allSkills.length;
   const authoredNote = authored.length ? ` (${authored.length} authored)` : '';
-  await gitCommit(cloneDir, `chore: update skills via augy — ${skillCount} skill(s)${authoredNote}`);
-  await gitPush(cloneDir);
+  let pushed = false;
+  try {
+    await gitCommit(cloneDir, `chore: update skills via augy — ${skillCount} skill(s)${authoredNote}`);
+    await gitPush(cloneDir);
+    pushed = true;
+    s2.stop(`${chalk.green('✓')} Pushed`);
+  } catch (err) {
+    const msg = String(err);
+    if (msg.includes('nothing to commit') || msg.includes('nothing added to commit')) {
+      s2.stop(chalk.dim('Nothing changed — home repo is already up to date'));
+    } else {
+      s2.stop(chalk.red('✗ Push failed'));
+      throw err;
+    }
+  }
 
   outro(
-    `${chalk.bold(String(skillCount))} skill(s) saved to ${chalk.cyan(home.repo)}\n` +
-    (authored.length
-      ? chalk.dim(`  ${authored.length} authored skill(s) committed + source registered\n`)
-      : '') +
-    chalk.dim(`  Run \`augy home pull\` on a new machine to restore.`),
+    pushed
+      ? `${chalk.bold(String(skillCount))} skill(s) saved to ${chalk.cyan(home.repo)}\n` +
+        chalk.dim(`  Run \`augy home pull\` on a new machine to restore.`)
+      : chalk.dim('Home repo is up to date — no changes to push.'),
   );
 }
 
@@ -228,10 +248,12 @@ export async function homePullCommand(
     }
   }
 
+  let bundleContexts: Record<string, string[]> = {};
   const manifestPath = join(cloneDir, home.path);
   if (existsSync(manifestPath)) {
     const { readFile } = await import('fs/promises');
     const bundle = JSON.parse(await readFile(manifestPath, 'utf8')) as AugyBundle;
+    bundleContexts = bundle.contexts ?? {};
     for (const [name, source] of Object.entries(bundle.skills)) {
       if (source && !available.find((s) => s.name === name)) {
         available.push({ name, source, isAuthored: false });
@@ -247,14 +269,15 @@ export async function homePullCommand(
   // -------------------------------------------------------------------------
   // Skill picker
   // -------------------------------------------------------------------------
-  // Look up context tags from the registry for authored skills
+  // Contexts: prefer manifest (from home repo) then fall back to local registry
   const currentRegistry = await readRegistry();
 
   const selected = await filterableMultiselect<PullSkill>({
     message: `Select skills to install  ${chalk.dim(`(${available.length} available)`)}`,
     options: available.map((sk) => {
-      const record   = currentRegistry.skills[sk.name];
-      const contexts = record?.contexts ?? [];
+      const contexts = bundleContexts[sk.name]
+        ?? currentRegistry.skills[sk.name]?.contexts
+        ?? [];
       const matches  = skillMatchesContext(contexts, opts.context);
       const ctxHint  = contexts.length ? chalk.dim(contexts.join(', ')) : '';
       const srcHint  = sk.isAuthored ? chalk.dim('authored') : chalk.dim(sk.source);
@@ -324,6 +347,8 @@ export async function homePullCommand(
       name: sk.name, source: '', gigetSource: '', sha: 'home',
       agentIds: targetAgents.map((a) => a.id), agentPaths,
     });
+    // Restore context tags from the manifest
+    if (bundleContexts[sk.name]) record.contexts = bundleContexts[sk.name];
     upsertSkill(registry, record);
   }
   if (authoredToInstall.length) await writeRegistry(registry);
