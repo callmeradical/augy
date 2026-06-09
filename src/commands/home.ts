@@ -262,7 +262,10 @@ export async function homePullCommand(
     process.exit(0);
   }
 
-  const toInstall = selected as PullSkill[];
+  // Re-resolve selected items through `available` — the picker may return
+  // stale object references if options were filtered mid-session.
+  const toInstall = (selected as PullSkill[])
+    .map((sk) => available.find((a) => a.name === sk.name) ?? sk);
 
   // -------------------------------------------------------------------------
   // Agent picker (skip if --agent was passed)
@@ -318,7 +321,11 @@ export async function homePullCommand(
   // -------------------------------------------------------------------------
   // Sync selected external skills via a filtered manifest
   // -------------------------------------------------------------------------
-  const externalToInstall = toInstall.filter((sk) => !sk.isAuthored);
+  // External = not authored AND source does not point back at the home repo
+  // (guards against stale home-repo URLs from pre-0.6.0 pushes)
+  const externalToInstall = toInstall.filter(
+    (sk) => !sk.isAuthored && sk.source && !sk.source.includes(home!.repo),
+  );
   if (externalToInstall.length) {
     const { tmpdir: td } = await import('os');
     const { writeFile: wf } = await import('fs/promises');
