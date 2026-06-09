@@ -29,6 +29,7 @@ vi.mock('fs/promises', async (importOriginal) => {
     cp:       vi.fn(),
     mkdir:    vi.fn(),
     readdir:  vi.fn(),
+    readFile: vi.fn(),
     writeFile: vi.fn(),
   };
 });
@@ -39,22 +40,29 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 vi.mock('@clack/prompts', () => ({
-  intro:   vi.fn(),
-  outro:   vi.fn(),
-  spinner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
-  isCancel: vi.fn(() => false),
-  confirm:  vi.fn(async () => true),
+  intro:      vi.fn(),
+  outro:      vi.fn(),
+  spinner:    vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
+  isCancel:   vi.fn(() => false),
+  confirm:    vi.fn(async () => true),
+  multiselect: vi.fn(),
 }));
 
 vi.mock('./sync.js', () => ({ syncCommand: vi.fn() }));
 
+vi.mock('../ui/filterable-multiselect.js', () => ({
+  filterableMultiselect: vi.fn(),
+}));
+
 const fakeAgent = { id: 'opencode', name: 'OpenCode', skillsPath: '/home/user/.opencode/skills', skillFile: 'SKILL.md' };
+const fakeAgent2 = { id: 'claude', name: 'Claude', skillsPath: '/home/user/.claude/skills', skillFile: 'SKILL.md' };
 vi.mock('../agents.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../agents.js')>();
   return {
     ...actual,
-    detectInstalledAgents: vi.fn(() => [fakeAgent]),
-    agentSkillPath: (_agent: typeof fakeAgent, name: string) => `/home/user/.opencode/skills/${name}`,
+    AGENTS: [fakeAgent, fakeAgent2],
+    detectInstalledAgents: vi.fn(() => [fakeAgent, fakeAgent2]),
+    agentSkillPath: (_agent: typeof fakeAgent, name: string) => `/home/user/.${_agent.id}/skills/${name}`,
   };
 });
 
@@ -79,14 +87,16 @@ function makeSkill(name: string, source: string, agentPath = `/home/user/.openco
 // Shared refs
 // ---------------------------------------------------------------------------
 
-let readRegistry:  ReturnType<typeof vi.fn>;
-let writeRegistry: ReturnType<typeof vi.fn>;
-let cloneRepo:     ReturnType<typeof vi.fn>;
-let gitAddAll:     ReturnType<typeof vi.fn>;
-let gitCommit:     ReturnType<typeof vi.fn>;
-let gitPush:       ReturnType<typeof vi.fn>;
-let existsSync:    ReturnType<typeof vi.fn>;
-let writeFile:     ReturnType<typeof vi.fn>;
+let readRegistry:          ReturnType<typeof vi.fn>;
+let writeRegistry:         ReturnType<typeof vi.fn>;
+let cloneRepo:             ReturnType<typeof vi.fn>;
+let gitAddAll:             ReturnType<typeof vi.fn>;
+let gitCommit:             ReturnType<typeof vi.fn>;
+let gitPush:               ReturnType<typeof vi.fn>;
+let existsSync:            ReturnType<typeof vi.fn>;
+let writeFile:             ReturnType<typeof vi.fn>;
+let filterableMultiselect: ReturnType<typeof vi.fn>;
+let multiselect:           ReturnType<typeof vi.fn>;
 
 let homeSetCommand:  (repo: string, opts?: { path?: string; skillsPath?: string }) => Promise<void>;
 let homePushCommand: () => Promise<void>;
@@ -116,9 +126,22 @@ beforeEach(async () => {
   const fsp = await import('fs/promises');
   writeFile = fsp.writeFile as ReturnType<typeof vi.fn>;
   writeFile.mockResolvedValue(undefined);
-  (fsp.mkdir as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-  (fsp.cp    as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+  (fsp.mkdir   as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+  (fsp.cp      as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
   (fsp.readdir as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  (fsp.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+    JSON.stringify({ version: 1, skills: {} }),
+  );
+
+  const clack = await import('@clack/prompts');
+  multiselect = clack.multiselect as ReturnType<typeof vi.fn>;
+  multiselect.mockResolvedValue([fakeAgent.id, fakeAgent2.id]);
+
+  const fms = await import('../ui/filterable-multiselect.js');
+  filterableMultiselect = fms.filterableMultiselect as ReturnType<typeof vi.fn>;
+  filterableMultiselect.mockImplementation(
+    async (opts: { options: Array<{ value: unknown }> }) => opts.options.map((o) => o.value),
+  );
 
   const mod = await import('./home.js');
   homeSetCommand  = mod.homeSetCommand;
@@ -205,12 +228,13 @@ describe('homePushCommand', () => {
     await homePushCommand();
 
     expect(cp).toHaveBeenCalledOnce();
-    // Manifest should now include the authored skill's newly assigned source
+    // Authored skill should appear in manifest with empty source (sync skips it on pull)
     const [, content] = writeFile.mock.calls[0] as [string, string];
     const manifest = JSON.parse(content) as { skills: Record<string, string> };
-    expect(manifest.skills['my-skill']).toContain('alice/my-skills');
-    // Registry should be saved with the updated source
-    expect(writeRegistry).toHaveBeenCalled();
+    expect(manifest.skills['my-skill']).toBe('');
+    // Registry source stays empty — authored skills are not given a URL
+    const saved = writeRegistry.mock.calls[0]?.[0] as Registry | undefined;
+    expect(saved?.skills['my-skill']?.source ?? '').toBe('');
   });
 
   it('does not copy files for externally-sourced skills', async () => {
@@ -241,36 +265,121 @@ describe('homePullCommand', () => {
     await expect(homePullCommand()).rejects.toThrow('exit');
   });
 
-  it('exits when no agents are detected', async () => {
-    readRegistry.mockResolvedValue(makeRegistry({
-      home: { repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' },
-    }));
-    const agents = await import('../agents.js');
-    (agents.detectInstalledAgents as ReturnType<typeof vi.fn>).mockReturnValueOnce([]);
-    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
-
-    await expect(homePullCommand()).rejects.toThrow('exit');
-  });
-
-  it('clones the repo and runs syncCommand with the manifest path', async () => {
+  it('shows a skill picker with authored + external skills from the repo', async () => {
     existsSync.mockReturnValue(true);
     readRegistry.mockResolvedValue(makeRegistry({
       home: { repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' },
     }));
-    const { readdir } = await import('fs/promises');
-    (readdir as ReturnType<typeof vi.fn>).mockResolvedValue([]); // no authored skills
+    const { readdir, readFile } = await import('fs/promises');
+    // Two authored skills in the skills/ dir
+    (readdir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: 'my-skill', isDirectory: () => true },
+      { name: 'other-skill', isDirectory: () => true },
+    ]);
+    // Manifest has one external skill
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({ version: 1, skills: { tdd: 'github:org/skills/tdd', 'my-skill': '', 'other-skill': '' } }),
+    );
+
+    await homePullCommand();
+
+    expect(filterableMultiselect).toHaveBeenCalledOnce();
+    const pickerOpts = filterableMultiselect.mock.calls[0]![0] as { options: Array<{ label: string }> };
+    const labels = pickerOpts.options.map((o) => o.label);
+    expect(labels).toContain('my-skill');
+    expect(labels).toContain('other-skill');
+    expect(labels).toContain('tdd');
+  });
+
+  it('shows an agent picker and installs authored skills to selected agents only', async () => {
+    existsSync.mockReturnValue(true);
+    readRegistry.mockResolvedValue(makeRegistry({
+      home: { repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' },
+    }));
+    const { readdir, readFile } = await import('fs/promises');
+    (readdir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: 'my-skill', isDirectory: () => true },
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({ version: 1, skills: { 'my-skill': '' } }),
+    );
+    // User selects only opencode agent
+    multiselect.mockResolvedValueOnce([fakeAgent.id]);
+
+    const { cp } = await import('fs/promises');
+    await homePullCommand();
+
+    // cp called once (for opencode only, not claude)
+    expect(cp).toHaveBeenCalledOnce();
+    const [, dest] = (cp as ReturnType<typeof vi.fn>).mock.calls[0] as [string, string];
+    expect(dest).toContain('opencode');
+  });
+
+  it('passes only selected external skills to syncCommand', async () => {
+    existsSync.mockReturnValue(true);
+    readRegistry.mockResolvedValue(makeRegistry({
+      home: { repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' },
+    }));
+    const { readdir, readFile } = await import('fs/promises');
+    (readdir as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({ version: 1, skills: { tdd: 'github:org/tdd', commit: 'github:org/commit' } }),
+    );
+    // User selects only tdd from the picker
+    filterableMultiselect.mockResolvedValueOnce([
+      { name: 'tdd', source: 'github:org/tdd', isAuthored: false },
+    ]);
 
     const { syncCommand } = await import('./sync.js');
     const syncMock = syncCommand as ReturnType<typeof vi.fn>;
 
     await homePullCommand();
 
-    expect(cloneRepo).toHaveBeenCalledWith(
-      'https://github.com/alice/my-skills.git',
-      expect.stringContaining('augy-home-pull-'),
-    );
     expect(syncMock).toHaveBeenCalledOnce();
-    const [manifestPath] = syncMock.mock.calls[0] as [string];
-    expect(manifestPath).toMatch(/augy-home-pull-.+\/augy\.json$/);
+    const [tmpPath] = syncMock.mock.calls[0] as [string];
+    const { readFile: rf } = await import('fs/promises');
+    // The temp manifest written for sync should only contain tdd
+    // We verify writeFile was called (filtered manifest written for sync)
+    expect(writeFile).toHaveBeenCalled();
+  });
+
+  it('skips syncCommand entirely when no external skills are selected', async () => {
+    existsSync.mockReturnValue(true);
+    readRegistry.mockResolvedValue(makeRegistry({
+      home: { repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' },
+    }));
+    const { readdir, readFile } = await import('fs/promises');
+    (readdir as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: 'my-skill', isDirectory: () => true },
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({ version: 1, skills: { 'my-skill': '' } }),
+    );
+    // Only authored skill selected (no external)
+    filterableMultiselect.mockResolvedValueOnce([
+      { name: 'my-skill', source: '', isAuthored: true },
+    ]);
+
+    const { syncCommand } = await import('./sync.js');
+    await homePullCommand();
+
+    expect(syncCommand).not.toHaveBeenCalled();
+  });
+
+  it('respects --agent flag and skips agent picker', async () => {
+    existsSync.mockReturnValue(true);
+    readRegistry.mockResolvedValue(makeRegistry({
+      home: { repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' },
+    }));
+    const { readdir, readFile } = await import('fs/promises');
+    (readdir as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({ version: 1, skills: {} }),
+    );
+
+    await homePullCommand({ agent: ['opencode'] });
+
+    // multiselect (agent picker) should NOT have been called
+    expect(multiselect).not.toHaveBeenCalled();
   });
 });

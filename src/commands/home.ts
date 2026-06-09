@@ -26,7 +26,7 @@
  *   augy home pull
  */
 
-import { intro, outro, spinner } from '@clack/prompts';
+import { intro, isCancel, multiselect, outro, spinner } from '@clack/prompts';
 import chalk from 'chalk';
 import { cp, mkdir, readdir, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -41,10 +41,12 @@ import {
   upsertSkill,
   writeRegistry,
 } from '../registry.js';
+// upsertSkill is used in homePullCommand
 import { cloneRepo, gitAddAll, gitCommit, gitPush, repoToUrl } from '../git.js';
 import type { AugyBundle } from './bundle.js';
 import { agentSkillPath, detectInstalledAgents, AGENTS } from '../agents.js';
 import { createSkillRecord } from '../registry.js';
+import { filterableMultiselect } from '../ui/filterable-multiselect.js';
 
 const DEFAULT_PATH       = 'augy.json';
 const DEFAULT_SKILLS_DIR = 'skills';
@@ -128,7 +130,6 @@ export async function homePushCommand(): Promise<void> {
   // -------------------------------------------------------------------------
   // Copy authored skill files into the clone
   // -------------------------------------------------------------------------
-  const homeRepo = home.repo;
   for (const skill of authored) {
     // Find the first agent path that exists on disk
     const sourcePath = Object.values(skill.agents).find((a) => a.active && existsSync(a.path))?.path;
@@ -140,19 +141,22 @@ export async function homePushCommand(): Promise<void> {
 
     await mkdir(destPath, { recursive: true });
     await cp(sourcePath, destPath, { recursive: true, force: true });
-
-    // Register the home repo as the source for this skill going forward
-    const newSource = `https://github.com/${homeRepo}/tree/main/${home.skillsPath ? home.skillsPath + '/' : ''}${skill.name}`;
-    skill.source = newSource;
-    upsertSkill(registry, skill);
+    // source stays '' — authored skills are identified by their files in
+    // skills/, not by a URL. Setting a home-repo URL would cause sync to
+    // try (and fail) to install from a private repo on pull.
   }
 
   // -------------------------------------------------------------------------
-  // Write the manifest (all skills)
+  // Write the manifest (external skills only — authored are handled by files)
   // -------------------------------------------------------------------------
   const bundle: AugyBundle = { version: 1, skills: {} };
-  for (const skill of allSkills) {
-    bundle.skills[skill.name] = skill.source; // authored skills now have a source set above
+  for (const skill of external) {
+    bundle.skills[skill.name] = skill.source;
+  }
+  // Include authored skill names with empty source so the manifest is a
+  // complete record, but sync will skip empty sources on pull.
+  for (const skill of authored) {
+    bundle.skills[skill.name] = '';
   }
   await writeFile(
     join(cloneDir, home.path),
@@ -171,10 +175,6 @@ export async function homePushCommand(): Promise<void> {
   const authoredNote = authored.length ? ` (${authored.length} authored)` : '';
   await gitCommit(cloneDir, `chore: update skills via augy — ${skillCount} skill(s)${authoredNote}`);
   await gitPush(cloneDir);
-  s2.stop(`${chalk.green('✓')} Pushed`);
-
-  // Persist updated sources for authored skills
-  if (authored.length) await writeRegistry(registry);
 
   outro(
     `${chalk.bold(String(skillCount))} skill(s) saved to ${chalk.cyan(home.repo)}\n` +
@@ -189,6 +189,12 @@ export async function homePushCommand(): Promise<void> {
 // home pull
 // ---------------------------------------------------------------------------
 
+interface PullSkill {
+  name:       string;
+  source:     string;  // '' = authored, non-empty = external
+  isAuthored: boolean;
+}
+
 export async function homePullCommand(
   opts: { dryRun?: boolean; agent?: string[] } = {},
 ): Promise<void> {
@@ -198,10 +204,7 @@ export async function homePullCommand(
   const home = getHomeConfig(registry);
 
   if (!home) {
-    console.error(
-      chalk.red('No home repo configured.') +
-      '\nRun `augy home set <owner/repo>` first.',
-    );
+    console.error(chalk.red('No home repo configured.') + '\nRun `augy home set <owner/repo>` first.');
     process.exit(1);
   }
 
@@ -213,75 +216,117 @@ export async function homePullCommand(
   s.stop(`${chalk.green('✓')} Cloned`);
 
   // -------------------------------------------------------------------------
-  // Determine target agents
+  // Discover available skills: authored from files + external from manifest
   // -------------------------------------------------------------------------
-  const targetAgents = opts.agent?.length
-    ? AGENTS.filter((a) => opts.agent!.includes(a.id))
-    : detectInstalledAgents();
+  const available: PullSkill[] = [];
 
-  if (!targetAgents.length) {
-    console.error(chalk.red('No agents detected. Install an agent or use --agent to specify one.'));
-    process.exit(1);
-  }
-
-  // -------------------------------------------------------------------------
-  // Install authored skills directly from the clone
-  // -------------------------------------------------------------------------
-  const skillsDir = home.skillsPath
-    ? join(cloneDir, home.skillsPath)
-    : cloneDir;
-
-  const authoredInstalled: string[] = [];
-
+  const skillsDir = home.skillsPath ? join(cloneDir, home.skillsPath) : cloneDir;
   if (existsSync(skillsDir)) {
     const entries = await readdir(skillsDir, { withFileTypes: true });
-    const skillDirs = entries.filter((e) => e.isDirectory());
-
-    for (const dir of skillDirs) {
-      const skillName = dir.name;
-      const srcPath   = join(skillsDir, skillName);
-      const source    = `https://github.com/${home.repo}/tree/main/${home.skillsPath ? home.skillsPath + '/' : ''}${skillName}`;
-
-      if (opts.dryRun) {
-        console.log(`  ${chalk.cyan('+')} ${skillName}  ${chalk.dim('(authored)')}`);
-        continue;
-      }
-
-      const agentPaths: Record<string, string> = {};
-      for (const agent of targetAgents) {
-        const dest = agentSkillPath(agent, skillName);
-        await mkdir(dest, { recursive: true });
-        await cp(srcPath, dest, { recursive: true, force: true });
-        agentPaths[agent.id] = dest;
-      }
-
-      const record = createSkillRecord({
-        name:        skillName,
-        source,
-        gigetSource: '',
-        sha:         'home',
-        agentIds:    targetAgents.map((a) => a.id),
-        agentPaths,
-      });
-      upsertSkill(registry, record);
-      authoredInstalled.push(skillName);
+    for (const e of entries) {
+      if (e.isDirectory()) available.push({ name: e.name, source: '', isAuthored: true });
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Sync externally-sourced skills via the manifest
-  // -------------------------------------------------------------------------
   const manifestPath = join(cloneDir, home.path);
   if (existsSync(manifestPath)) {
-    const { syncCommand } = await import('./sync.js');
-    await syncCommand(manifestPath, opts);
+    const { readFile } = await import('fs/promises');
+    const bundle = JSON.parse(await readFile(manifestPath, 'utf8')) as AugyBundle;
+    for (const [name, source] of Object.entries(bundle.skills)) {
+      if (source && !available.find((s) => s.name === name)) {
+        available.push({ name, source, isAuthored: false });
+      }
+    }
   }
 
-  if (!opts.dryRun && authoredInstalled.length) {
-    await writeRegistry(registry);
+  if (!available.length) {
+    outro(chalk.dim('No skills found in home repo.'));
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // Skill picker
+  // -------------------------------------------------------------------------
+  const selected = await filterableMultiselect<PullSkill>({
+    message: `Select skills to install  ${chalk.dim(`(${available.length} available)`)}`,
+    options: available.map((sk) => ({
+      value:    sk,
+      label:    sk.name,
+      hint:     sk.isAuthored ? chalk.dim('authored') : chalk.dim(sk.source),
+      selected: true,
+    })),
+  });
+
+  if (isCancel(selected) || !(selected as PullSkill[]).length) {
+    console.log(chalk.dim('Cancelled.'));
+    process.exit(0);
+  }
+
+  const toInstall = selected as PullSkill[];
+
+  // -------------------------------------------------------------------------
+  // Agent picker (skip if --agent was passed)
+  // -------------------------------------------------------------------------
+  let targetAgents = opts.agent?.length
+    ? AGENTS.filter((a) => opts.agent!.includes(a.id))
+    : detectInstalledAgents();
+
+  if (!opts.agent?.length) {
+    const agentResult = await multiselect<string>({
+      message: 'Install to which agents?',
+      options: targetAgents.map((a) => ({ value: a.id, label: a.name })),
+      initialValues: targetAgents.map((a) => a.id),
+    });
+    if (isCancel(agentResult)) { console.log(chalk.dim('Cancelled.')); process.exit(0); }
+    targetAgents = AGENTS.filter((a) => (agentResult as string[]).includes(a.id));
+  }
+
+  if (!targetAgents.length) {
+    console.error(chalk.red('No agents selected.'));
+    process.exit(1);
   }
 
   if (opts.dryRun) {
+    for (const sk of toInstall) {
+      console.log(`  ${chalk.cyan('+')} ${sk.name}  ${chalk.dim(sk.isAuthored ? 'authored' : sk.source)}`);
+    }
     outro(chalk.dim('Dry run — no changes made.'));
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // Install authored skills from clone
+  // -------------------------------------------------------------------------
+  const authoredToInstall = toInstall.filter((sk) => sk.isAuthored);
+  for (const sk of authoredToInstall) {
+    const srcPath    = join(skillsDir, sk.name);
+    const agentPaths: Record<string, string> = {};
+    for (const agent of targetAgents) {
+      const dest = agentSkillPath(agent, sk.name);
+      await mkdir(dest, { recursive: true });
+      await cp(srcPath, dest, { recursive: true, force: true });
+      agentPaths[agent.id] = dest;
+    }
+    const record = createSkillRecord({
+      name: sk.name, source: '', gigetSource: '', sha: 'home',
+      agentIds: targetAgents.map((a) => a.id), agentPaths,
+    });
+    upsertSkill(registry, record);
+  }
+  if (authoredToInstall.length) await writeRegistry(registry);
+
+  // -------------------------------------------------------------------------
+  // Sync selected external skills via a filtered manifest
+  // -------------------------------------------------------------------------
+  const externalToInstall = toInstall.filter((sk) => !sk.isAuthored);
+  if (externalToInstall.length) {
+    const { tmpdir: td } = await import('os');
+    const { writeFile: wf } = await import('fs/promises');
+    const filteredBundle: AugyBundle = { version: 1, skills: {} };
+    for (const sk of externalToInstall) filteredBundle.skills[sk.name] = sk.source;
+    const tmpManifest = join(td(), `augy-home-pull-manifest-${Date.now()}.json`);
+    await wf(tmpManifest, JSON.stringify(filteredBundle, null, 2) + '\n', 'utf8');
+    const { syncCommand } = await import('./sync.js');
+    await syncCommand(tmpManifest, { ...opts, agent: targetAgents.map((a) => a.id) });
   }
 }
