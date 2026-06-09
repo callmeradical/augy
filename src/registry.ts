@@ -92,6 +92,12 @@ export interface Registry {
   skills: Record<string, RegistrySkill>;
   /** Personal home repo for push/pull of the skills manifest */
   home?: HomeConfig;
+  /**
+   * This machine's context (e.g. 'work', 'personal').
+   * Local-only — never pushed to the home repo.
+   * Used as the default filter for `augy home pull`.
+   */
+  machineContext?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +240,14 @@ export function removeTap(registry: Registry, key: string): void {
  *  - Skill has 'universal' → always matches
  *  - Otherwise → matches if contexts includes the requested context
  */
+export function getMachineContext(registry: Registry): string | undefined {
+  return registry.machineContext;
+}
+
+export function setMachineContext(registry: Registry, context: string | undefined): void {
+  registry.machineContext = context;
+}
+
 export function skillMatchesContext(
   skillContexts: string[] | undefined,
   filter: string | undefined,

@@ -35,6 +35,7 @@ import { tmpdir } from 'os';
 
 import {
   getHomeConfig,
+  getMachineContext,
   listSkills,
   readRegistry,
   setHomeConfig,
@@ -270,15 +271,18 @@ export async function homePullCommand(
   // Skill picker
   // -------------------------------------------------------------------------
   // Contexts: prefer manifest (from home repo) then fall back to local registry
+  // Effective context: explicit --context flag > machine context > none
   const currentRegistry = await readRegistry();
+  const effectiveContext = opts.context ?? getMachineContext(currentRegistry);
 
   const selected = await filterableMultiselect<PullSkill>({
-    message: `Select skills to install  ${chalk.dim(`(${available.length} available)`)}`,
+    message: `Select skills to install  ${chalk.dim(`(${available.length} available)`)}` +
+      (effectiveContext ? chalk.dim(`  [context: ${effectiveContext}]`) : ''),
     options: available.map((sk) => {
       const contexts = bundleContexts[sk.name]
         ?? currentRegistry.skills[sk.name]?.contexts
         ?? [];
-      const matches  = skillMatchesContext(contexts, opts.context);
+      const matches  = skillMatchesContext(contexts, effectiveContext);
       const ctxHint  = contexts.length ? chalk.dim(contexts.join(', ')) : '';
       const srcHint  = sk.isAuthored ? chalk.dim('authored') : chalk.dim(sk.source);
       return {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Registry } from './registry.js';
-import { getHomeConfig, setHomeConfig, skillMatchesContext } from './registry.js';
+import { getHomeConfig, getMachineContext, setHomeConfig, setMachineContext, skillMatchesContext } from './registry.js';
 
 // ---------------------------------------------------------------------------
 // Helpers to build a minimal registry for testing
@@ -24,6 +24,35 @@ describe('getHomeConfig', () => {
     const reg = emptyRegistry();
     reg.home = { repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' };
     expect(getHomeConfig(reg)).toEqual({ repo: 'alice/my-skills', path: 'augy.json', skillsPath: 'skills' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Machine context
+// ---------------------------------------------------------------------------
+
+describe('getMachineContext / setMachineContext', () => {
+  it('returns undefined when no machine context is set', () => {
+    expect(getMachineContext(emptyRegistry())).toBeUndefined();
+  });
+
+  it('returns the stored machine context', () => {
+    const reg = emptyRegistry();
+    reg.machineContext = 'work';
+    expect(getMachineContext(reg)).toBe('work');
+  });
+
+  it('stores the machine context', () => {
+    const reg = emptyRegistry();
+    setMachineContext(reg, 'personal');
+    expect(reg.machineContext).toBe('personal');
+  });
+
+  it('clears the machine context when passed undefined', () => {
+    const reg = emptyRegistry();
+    reg.machineContext = 'work';
+    setMachineContext(reg, undefined);
+    expect(reg.machineContext).toBeUndefined();
   });
 });
 

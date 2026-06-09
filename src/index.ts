@@ -237,6 +237,37 @@ program
   });
 
 // ---------------------------------------------------------------------------
+// context
+// ---------------------------------------------------------------------------
+const ctx = program
+  .command('context')
+  .description('Set or show this machine\'s context (work / personal / custom)');
+
+ctx
+  .command('set <context>')
+  .description('Mark this machine\'s context  e.g. augy context set work')
+  .action(async (context: string) => {
+    const { contextSetCommand } = await import('./commands/context.js');
+    await contextSetCommand(context);
+  });
+
+ctx
+  .command('show')
+  .description('Show the current machine context')
+  .action(async () => {
+    const { contextShowCommand } = await import('./commands/context.js');
+    await contextShowCommand();
+  });
+
+ctx
+  .command('clear')
+  .description('Remove the machine context')
+  .action(async () => {
+    const { contextSetCommand } = await import('./commands/context.js');
+    await contextSetCommand(undefined);
+  });
+
+// ---------------------------------------------------------------------------
 // tag (nested subcommands)
 // ---------------------------------------------------------------------------
 const tag = program
