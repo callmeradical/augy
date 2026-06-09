@@ -28,7 +28,7 @@ interface UpdateCandidate {
   gigetSource: string;
 }
 
-export async function updateCommand(nameArg?: string): Promise<void> {
+export async function updateCommand(nameArg?: string, opts: { all?: boolean } = {}): Promise<void> {
   intro(chalk.bold('augy') + chalk.dim(' — update'));
 
   const registry = await readRegistry();
@@ -141,21 +141,28 @@ export async function updateCommand(nameArg?: string): Promise<void> {
   }
   console.log();
 
-  // Let user select which to upgrade
-  const toUpdate =
-    candidates.length === 1
-      ? candidates
-      : await promptUpdateSelection(candidates);
+  // --all skips both the selection picker and confirmation prompt (CI-friendly)
+  let toUpdate: UpdateCandidate[];
+  if (opts.all) {
+    toUpdate = candidates;
+    console.log(chalk.dim(`  Upgrading all ${candidates.length} skill(s) (--all)…\n`));
+  } else {
+    const selected =
+      candidates.length === 1
+        ? candidates
+        : await promptUpdateSelection(candidates);
 
-  if (isCancel(toUpdate) || !toUpdate.length) {
-    cancel('Update cancelled');
-    process.exit(0);
-  }
+    if (isCancel(selected) || !selected.length) {
+      cancel('Update cancelled');
+      process.exit(0);
+    }
+    toUpdate = selected as UpdateCandidate[];
 
-  const ok = await confirm({ message: `Upgrade ${toUpdate.length} skill(s)?` });
-  if (isCancel(ok) || !ok) {
-    cancel('Update cancelled');
-    process.exit(0);
+    const ok = await confirm({ message: `Upgrade ${toUpdate.length} skill(s)?` });
+    if (isCancel(ok) || !ok) {
+      cancel('Update cancelled');
+      process.exit(0);
+    }
   }
 
   // Perform upgrades

@@ -1,6 +1,6 @@
 {
   "name": "@callmeradical/augy",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Homebrew for AI agent skills — install, version, update, rollback",
   "type": "module",
   "license": "MIT",

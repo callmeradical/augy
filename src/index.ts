@@ -61,9 +61,10 @@ program
 program
   .command('update [skill]')
   .description('Check for upstream changes and upgrade installed skills')
-  .action(async (skill?: string) => {
+  .option('--all', 'Upgrade all available updates without prompting (CI-friendly)')
+  .action(async (skill?: string, opts?: { all?: boolean }) => {
     const { updateCommand } = await import('./commands/update.js');
-    await updateCommand(skill);
+    await updateCommand(skill, opts ?? {});
   });
 
 // ---------------------------------------------------------------------------
@@ -115,7 +116,8 @@ program
   .description('Install/update skills from an augy.json manifest (default: ./augy.json)')
   .option('--dry-run', 'Preview changes without applying them')
   .option('-a, --agent <agents...>', 'Target agent(s) (default: all detected)')
-  .action(async (path?: string, opts?: { dryRun?: boolean; agent?: string[] }) => {
+  .option('--yes', 'Apply changes without confirmation prompt (CI-friendly)')
+  .action(async (path?: string, opts?: { dryRun?: boolean; agent?: string[]; yes?: boolean }) => {
     const { syncCommand } = await import('./commands/sync.js');
     await syncCommand(path, opts ?? {});
   });

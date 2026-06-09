@@ -48,7 +48,7 @@ const DEFAULT_FILENAME = 'augy.json';
 
 export async function syncCommand(
   pathArg?: string,
-  opts: { dryRun?: boolean; agent?: string[] } = {},
+  opts: { dryRun?: boolean; agent?: string[]; yes?: boolean } = {},
 ): Promise<void> {
   intro(chalk.bold('augy') + chalk.dim(' — sync'));
 
@@ -201,12 +201,14 @@ export async function syncCommand(
   // 5. Confirm and apply
   // -------------------------------------------------------------------------
   const actionCount = toInstall.length + toUpgrade.length;
-  const ok = await confirm({
-    message: `Apply ${actionCount} change(s) to ${targetAgents.map((a) => a.name).join(', ')}?`,
-  });
-  if (isCancel(ok) || !ok) {
-    console.log(chalk.dim('Cancelled.'));
-    process.exit(0);
+  if (!opts.yes) {
+    const ok = await confirm({
+      message: `Apply ${actionCount} change(s) to ${targetAgents.map((a) => a.name).join(', ')}?`,
+    });
+    if (isCancel(ok) || !ok) {
+      console.log(chalk.dim('Cancelled.'));
+      process.exit(0);
+    }
   }
 
   for (const entry of [...toInstall, ...toUpgrade]) {
