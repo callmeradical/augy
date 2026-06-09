@@ -59,6 +59,7 @@ export async function filterableMultiselect<T>(opts: {
   const initialValues = opts.options.filter((o) => o.selected).map((o) => o.value);
 
   let filterText   = '';
+  let filterMode   = false;
   let matchCount   = allOptions.length;
   const pageSize   = opts.pageSize ?? Math.min(14, process.stdout.rows - 6);
 
@@ -97,7 +98,6 @@ export async function filterableMultiselect<T>(opts: {
       }
 
       // ── filter line ─────────────────────────────────────────────────
-      const cursor  = filterText.length > 0 ? chalk.inverse(' ') : chalk.inverse(chalk.hidden('_'));
       const noMatch = matchCount === 0 && filterText.length > 0;
 
       const matchLabel = noMatch
@@ -106,13 +106,19 @@ export async function filterableMultiselect<T>(opts: {
           ? chalk.dim(`${matchCount} matched`)
           : chalk.dim(`${allOptions.length} skills`);
 
-      const hint = chalk.dim('space select · a all · enter confirm');
+      const hint = filterMode
+        ? chalk.dim('esc to clear · enter confirm')
+        : chalk.dim('/ filter · a all · space select · enter confirm');
+
+      const filterDisplay = filterMode
+        ? chalk.white(filterText) + chalk.inverse(' ')
+        : filterText
+          ? chalk.dim('/ ') + chalk.white(filterText) + chalk.dim(' (/ to edit)')
+          : chalk.dim('/ to filter');
 
       const filterLine =
-        `${chalk.cyan(S_BAR)}  ` +
-        chalk.dim('/ ') +
-        (filterText ? chalk.white(filterText) : chalk.dim('type to filter')) +
-        cursor +
+        `${filterMode ? chalk.cyan(S_BAR) : chalk.gray(S_BAR)}  ` +
+        filterDisplay +
         `  ${matchLabel}  ${hint}`;
 
       // ── option rows ─────────────────────────────────────────────────
@@ -156,29 +162,62 @@ export async function filterableMultiselect<T>(opts: {
   // Intercept key events to drive the filter
   // ------------------------------------------------------------------
   (prompt as unknown as NodeJS.EventEmitter).on('key', (key: string) => {
-    // Backspace / delete
-    if (key === '\b' || key === '\x7f' || (key as unknown) === 'backspace') {
-      filterText = filterText.slice(0, -1);
-    } else if (key && key.length === 1 && key.charCodeAt(0) >= 32) {
-      // Printable character — but ignore space (handled by MultiSelectPrompt as toggle)
-      if (key === ' ') return;
-      filterText += key;
-    } else {
-      return; // navigation keys — let MultiSelectPrompt handle them
+    const p = prompt as InstanceType<typeof MultiSelectPrompt>;
+
+    // ── filter mode ────────────────────────────────────────────────────────
+    if (filterMode) {
+      if (key === '\x1b') {
+        // Escape — exit filter mode and clear filter
+        filterMode = false;
+        filterText = '';
+      } else if (key === '\b' || key === '\x7f' || (key as unknown) === 'backspace') {
+        if (filterText.length > 0) {
+          filterText = filterText.slice(0, -1);
+        } else {
+          filterMode = false; // backspace past empty → exit filter mode
+        }
+      } else if (key === '/') {
+        filterMode = false; // second / exits filter mode, keeps filter
+        return;
+      } else if (key && key.length === 1 && key.charCodeAt(0) >= 32 && key !== ' ') {
+        filterText += key;
+      } else {
+        return; // pass navigation / space / enter through to MultiSelectPrompt
+      }
+
+      // Re-apply filter
+      const filtered = filterText
+        ? allOptions.filter((o) => o.label.toLowerCase().includes(filterText.toLowerCase()))
+        : allOptions;
+      matchCount = filtered.length;
+      p.options = filtered;
+      if (p.cursor >= filtered.length) p.cursor = Math.max(0, filtered.length - 1);
+      return;
     }
 
-    // Apply filter to the prompt's visible options
-    const filtered = filterText
-      ? allOptions.filter((o) => o.label.toLowerCase().includes(filterText.toLowerCase()))
-      : allOptions;
+    // ── normal mode ────────────────────────────────────────────────────────
 
-    matchCount = filtered.length;
-    (prompt as InstanceType<typeof MultiSelectPrompt>).options = filtered;
-
-    // Keep cursor in bounds
-    if ((prompt as InstanceType<typeof MultiSelectPrompt>).cursor >= filtered.length) {
-      (prompt as InstanceType<typeof MultiSelectPrompt>).cursor = Math.max(0, filtered.length - 1);
+    if (key === '/') {
+      filterMode = true;
+      return; // consume '/' — don't pass to MultiSelectPrompt
     }
+
+    if (key === 'a') {
+      // Toggle all currently visible options
+      const visibleValues = p.options.map((o: { value: unknown }) => o.value);
+      const currentSelected: unknown[] = Array.isArray(p.value) ? p.value : [];
+      const allVisible = visibleValues.every((v) => currentSelected.includes(v));
+      if (allVisible) {
+        p.value = currentSelected.filter((v) => !visibleValues.includes(v)) as never;
+      } else {
+        const union = [...currentSelected];
+        for (const v of visibleValues) if (!union.includes(v)) union.push(v);
+        p.value = union as never;
+      }
+      return;
+    }
+
+    // All other keys (space, arrows, enter, escape) → MultiSelectPrompt handles them
   });
 
   const result = await (prompt as unknown as { prompt(): Promise<unknown> }).prompt();

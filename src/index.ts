@@ -237,6 +237,30 @@ program
   });
 
 // ---------------------------------------------------------------------------
+// author (nested subcommands)
+// ---------------------------------------------------------------------------
+const author = program
+  .command('author')
+  .description('Create and edit self-authored skills');
+
+author
+  .command('new <name>')
+  .description('Scaffold a new skill and open it in $EDITOR')
+  .option('--no-edit', 'Skip opening the editor after creating')
+  .action(async (name: string, opts: { edit: boolean }) => {
+    const { authorNewCommand } = await import('./commands/author.js');
+    await authorNewCommand(name, { noEdit: !opts.edit });
+  });
+
+author
+  .command('edit <name>')
+  .description('Open an existing skill in $EDITOR')
+  .action(async (name: string) => {
+    const { authorEditCommand } = await import('./commands/author.js');
+    await authorEditCommand(name);
+  });
+
+// ---------------------------------------------------------------------------
 // home (nested subcommands)
 // ---------------------------------------------------------------------------
 const home = program
