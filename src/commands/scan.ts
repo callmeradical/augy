@@ -430,22 +430,41 @@ async function findAllOnDiskSkills(): Promise<Map<string, UntrackedSkill['agents
   await Promise.all(
     AGENTS.map(async (agent) => {
       if (!existsSync(agent.skillsPath)) return;
-      let entries: string[];
-      try {
-        const dirents = await readdir(agent.skillsPath, { withFileTypes: true });
-        entries = dirents.filter((d) => d.isDirectory()).map((d) => d.name);
-      } catch { return; }
-
-      for (const name of entries) {
-        const skillPath = join(agent.skillsPath, name);
-        if (!existsSync(join(skillPath, agent.skillFile))) continue;
-        if (!result.has(name)) result.set(name, []);
-        result.get(name)!.push({ agent, path: skillPath });
-      }
+      await walkSkillsDir(agent.skillsPath, agent, result);
     }),
   );
 
   return result;
+}
+
+/**
+ * Recursively walk `dir`, adding any subdirectory that contains the agent's
+ * skill file (e.g. SKILL.md) to `result`.  Descends into subdirectories that
+ * are NOT themselves skills so that nested layouts are fully discovered.
+ */
+async function walkSkillsDir(
+  dir: string,
+  agent: Agent,
+  result: Map<string, UntrackedSkill['agents']>,
+): Promise<void> {
+  let dirents: import('fs').Dirent[];
+  try {
+    dirents = await readdir(dir, { withFileTypes: true });
+  } catch { return; }
+
+  for (const dirent of dirents) {
+    if (!dirent.isDirectory()) continue;
+    const skillPath = join(dir, dirent.name);
+    if (existsSync(join(skillPath, agent.skillFile))) {
+      // This directory is a skill — record it and do not descend further.
+      const name = dirent.name;
+      if (!result.has(name)) result.set(name, []);
+      result.get(name)!.push({ agent, path: skillPath });
+    } else {
+      // Not a skill — descend to find nested skills.
+      await walkSkillsDir(skillPath, agent, result);
+    }
+  }
 }
 
 /** Read the first meaningful content line from SKILL.md, skipping frontmatter */

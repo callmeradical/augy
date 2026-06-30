@@ -25,8 +25,37 @@ export interface TapSearchResult {
 }
 
 /**
+ * Score a skill name against a query for fuzzy matching.
+ *
+ * Returns a score 0–100:
+ *   100 — exact case-insensitive match
+ *    90 — name starts with query
+ *    70 — name contains query as a substring
+ *    40 — query is a subsequence of name (all chars appear in order)
+ *     0 — no match
+ */
+function fuzzyScore(name: string, query: string): number {
+  const n = name.toLowerCase();
+  const q = query.toLowerCase();
+  if (n === q) return 100;
+  if (n.startsWith(q)) return 90;
+  if (n.includes(q)) return 70;
+  // subsequence check: every char of q appears in n in order
+  let ni = 0;
+  for (const ch of q) {
+    const found = n.indexOf(ch, ni);
+    if (found === -1) return 0;
+    ni = found + 1;
+  }
+  return 40;
+}
+
+/**
  * Search all registered taps for skills whose names match `query`.
  * Empty/undefined query returns all skills across all taps.
+ *
+ * When a query is provided, results are fuzzy-matched and sorted by score
+ * (best match first within each tap).
  *
  * Results are fetched in parallel across taps.
  */
@@ -43,11 +72,16 @@ export async function searchTaps(
       const coords = parseGitHubUrl(source);
       const skills = await discoverSkills(coords);
 
-      const filtered = query
-        ? skills.filter((s) =>
-            s.name.toLowerCase().includes(query.toLowerCase()),
-          )
-        : skills;
+      let filtered: RemoteSkill[];
+      if (query) {
+        const scored = skills
+          .map((s) => ({ skill: s, score: fuzzyScore(s.name, query) }))
+          .filter((x) => x.score > 0)
+          .sort((a, b) => b.score - a.score);
+        filtered = scored.map((x) => x.skill);
+      } else {
+        filtered = skills;
+      }
 
       return {
         tapKey: tapKey(tap.owner, tap.repo),
