@@ -1,9 +1,29 @@
 /**
  * GitHub URL parsing, skill discovery, and SHA resolution.
  *
- * All network calls use the public GitHub REST API (no auth required for public
- * repos, 60 req/hr unauthenticated). Set GITHUB_TOKEN to raise the limit.
+ * All GitHub API calls go through the `gh` CLI so authentication, rate limits,
+ * and User-Agent are all handled by the tool the user already has configured.
  */
+
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const exec = promisify(execFile);
+
+/**
+ * Call the GitHub API via `gh api <endpoint> [extraArgs]`.
+ * Throws a descriptive error on non-zero exit.
+ */
+async function ghApi<T>(endpoint: string, extraArgs: string[] = []): Promise<T> {
+  try {
+    const { stdout } = await exec('gh', ['api', endpoint, ...extraArgs]);
+    return JSON.parse(stdout) as T;
+  } catch (err: unknown) {
+    const e = err as { stderr?: string; stdout?: string; message?: string };
+    const detail = e.stderr?.trim() || e.stdout?.trim() || e.message || String(err);
+    throw new Error(`gh api ${endpoint} failed: ${detail}`);
+  }
+}
 
 export interface GitHubCoords {
   owner: string;
@@ -80,7 +100,7 @@ export function parseGitHubUrl(input: string): GitHubCoords {
 }
 
 // ---------------------------------------------------------------------------
-// GitHub API helpers
+// GitHub API helpers (backed by `gh api`)
 // ---------------------------------------------------------------------------
 
 type GHContentItem = {
@@ -91,27 +111,6 @@ type GHContentItem = {
   download_url: string | null;
 };
 
-type GHCommit = { sha: string };
-
-function apiHeaders(): HeadersInit {
-  const token = process.env['GITHUB_TOKEN'];
-  return {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'augy-cli',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
-async function ghFetch<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: apiHeaders() });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`GitHub API ${res.status}: ${url}\n${body}`);
-  }
-  return res.json() as Promise<T>;
-}
-
 /** List directory contents via GitHub Contents API */
 async function listContents(
   owner: string,
@@ -119,11 +118,17 @@ async function listContents(
   path: string,
   ref?: string,
 ): Promise<GHContentItem[]> {
-  const base = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-  const url = ref ? `${base}?ref=${encodeURIComponent(ref)}` : base;
-  const result = await ghFetch<GHContentItem | GHContentItem[]>(url);
+  const endpoint = ref
+    ? `repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`
+    : `repos/${owner}/${repo}/contents/${path}`;
+  const result = await ghApi<GHContentItem | GHContentItem[]>(endpoint);
   if (!Array.isArray(result)) throw new Error(`Expected directory at "${path}", got a file`);
   return result;
+}
+
+async function defaultBranch(owner: string, repo: string): Promise<string> {
+  const data = await ghApi<{ default_branch: string }>(`repos/${owner}/${repo}`);
+  return data.default_branch;
 }
 
 /** Get the latest commit SHA that touched a specific path */
@@ -133,27 +138,12 @@ export async function latestShaForPath(
   path: string,
   ref?: string,
 ): Promise<string> {
-  let url = `https://api.github.com/repos/${owner}/${repo}/commits?path=${encodeURIComponent(path)}&per_page=1`;
-  if (ref) url += `&sha=${encodeURIComponent(ref)}`;
-  const commits = await ghFetch<GHCommit[]>(url);
+  const endpoint = ref
+    ? `repos/${owner}/${repo}/commits?path=${encodeURIComponent(path)}&per_page=1&sha=${encodeURIComponent(ref)}`
+    : `repos/${owner}/${repo}/commits?path=${encodeURIComponent(path)}&per_page=1`;
+  const commits = await ghApi<Array<{ sha: string }>>(endpoint);
   if (!commits.length) throw new Error(`No commits found for path "${path}" in ${owner}/${repo}`);
   return commits[0]!.sha;
-}
-
-/** Repo-level HEAD SHA (used when path is the entire repo root) */
-async function repoHeadSha(owner: string, repo: string, ref?: string): Promise<string> {
-  const branch = ref ?? (await defaultBranch(owner, repo));
-  const data = await ghFetch<{ object: { sha: string } }>(
-    `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`,
-  );
-  return data.object.sha;
-}
-
-async function defaultBranch(owner: string, repo: string): Promise<string> {
-  const data = await ghFetch<{ default_branch: string }>(
-    `https://api.github.com/repos/${owner}/${repo}`,
-  );
-  return data.default_branch;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,8 +188,8 @@ export async function discoverSkills(coords: GitHubCoords): Promise<RemoteSkill[
 
   // Step 2: resolve ref → commit SHA → tree SHA, then fetch full recursive tree
   const commitSha = await resolveRefToCommitSha(owner, repo, ref);
-  const { tree, truncated } = await ghFetch<{ tree: GHTreeItem[]; truncated: boolean }>(
-    `https://api.github.com/repos/${owner}/${repo}/git/trees/${commitSha}?recursive=1`,
+  const { tree, truncated } = await ghApi<{ tree: GHTreeItem[]; truncated: boolean }>(
+    `repos/${owner}/${repo}/git/trees/${commitSha}?recursive=1`,
   );
 
   if (truncated) {
@@ -254,16 +244,16 @@ async function resolveRefToCommitSha(
 
   // Try as branch
   try {
-    const data = await ghFetch<{ object: { sha: string } }>(
-      `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`,
+    const data = await ghApi<{ object: { sha: string } }>(
+      `repos/${owner}/${repo}/git/refs/heads/${branch}`,
     );
     return data.object.sha;
   } catch { /* not a branch */ }
 
   // Try as tag
   try {
-    const data = await ghFetch<{ object: { sha: string } }>(
-      `https://api.github.com/repos/${owner}/${repo}/git/refs/tags/${branch}`,
+    const data = await ghApi<{ object: { sha: string } }>(
+      `repos/${owner}/${repo}/git/refs/tags/${branch}`,
     );
     return data.object.sha;
   } catch { /* not a tag */ }
@@ -299,19 +289,17 @@ export async function getFileFromRepo(
   repo: string,
   path: string,
 ): Promise<RepoFile | null> {
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-  const res = await fetch(url, { headers: apiHeaders() });
-
-  if (res.status === 404) return null;
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`GitHub API ${res.status}: ${url}\n${body}`);
+  try {
+    const data = await ghApi<{ sha: string; content: string; encoding: string }>(
+      `repos/${owner}/${repo}/contents/${path}`,
+    );
+    const content = Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
+    return { content, blobSha: data.sha };
+  } catch (err: unknown) {
+    // gh api exits non-zero on 404; treat it as "file not found"
+    if (String(err).includes('404') || String(err).includes('Not Found')) return null;
+    throw err;
   }
-
-  const data = (await res.json()) as { sha: string; content: string; encoding: string };
-  const content = Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
-  return { content, blobSha: data.sha };
 }
 
 export interface PutResult {
@@ -334,26 +322,17 @@ export async function putFileToRepo(
   message: string,
   blobSha?: string,
 ): Promise<PutResult> {
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const args = [
+    '--method', 'PUT',
+    '--raw-field', `message=${message}`,
+    '--raw-field', `content=${Buffer.from(content).toString('base64')}`,
+  ];
+  if (blobSha) args.push('--raw-field', `sha=${blobSha}`);
 
-  const body: Record<string, string> = {
-    message,
-    content: Buffer.from(content).toString('base64'),
-  };
-  if (blobSha) body['sha'] = blobSha;
-
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`GitHub API ${res.status}: ${url}\n${text}`);
-  }
-
-  const data = (await res.json()) as { commit: { sha: string } };
+  const data = await ghApi<{ commit: { sha: string } }>(
+    `repos/${owner}/${repo}/contents/${path}`,
+    args,
+  );
   return { commitSha: data.commit.sha };
 }
 
