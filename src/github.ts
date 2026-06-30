@@ -98,6 +98,7 @@ function apiHeaders(): HeadersInit {
   return {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'augy-cli',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
@@ -182,11 +183,13 @@ export async function discoverSkills(coords: GitHubCoords): Promise<RemoteSkill[
   const { owner, repo, path, ref } = coords;
 
   // Step 1: quick check — is the target path itself a skill?
+  // We resolve the commit SHA upfront so we can use it as the version identifier
+  // without an extra per-path commits API call.
   try {
     const items = await listContents(owner, repo, path, ref);
     if (items.some((i) => i.type === 'file' && isSkillFile(i.name))) {
       const skillName = path.split('/').filter(Boolean).at(-1) ?? repo;
-      const sha = await latestShaForPath(owner, repo, path || '.', ref);
+      const sha = await resolveRefToCommitSha(owner, repo, ref);
       return [{ name: skillName, repoPath: path, gigetSource: buildGigetSource(owner, repo, path, ref), sha }];
     }
   } catch {
@@ -208,14 +211,20 @@ export async function discoverSkills(coords: GitHubCoords): Promise<RemoteSkill[
   const prefix = path ? `${path}/` : '';
   const skillMdPaths = tree
     .filter((item) => item.type === 'blob' && item.path.startsWith(prefix) && isSkillFile(item.path.split('/').at(-1) ?? ''))
-    .map((item) => item.path.split('/').slice(0, -1).join('/')); // strip /skill.md
+    .map((item) => item.path.split('/').slice(0, -1).join('/')); // strip /SKILL.md
 
   if (!skillMdPaths.length) return [];
 
-  // Step 3: fetch path-specific commit SHAs in parallel (needed for change detection)
-  const results = await Promise.allSettled(
-    skillMdPaths.map(async (skillPath) => {
-      const sha = await latestShaForPath(owner, repo, skillPath, ref);
+  // Build a map of directory path → tree SHA from the recursive tree response.
+  // We use the directory's tree SHA as the skill version — it changes whenever
+  // any file inside the skill directory is modified, with zero extra API calls.
+  const treeShaByPath = new Map(
+    tree.filter((item) => item.type === 'tree').map((item) => [item.path, item.sha]),
+  );
+
+  return skillMdPaths
+    .map((skillPath) => {
+      const sha = treeShaByPath.get(skillPath) ?? commitSha;
       const name = skillPath.split('/').at(-1)!;
       return {
         name,
@@ -223,16 +232,11 @@ export async function discoverSkills(coords: GitHubCoords): Promise<RemoteSkill[
         gigetSource: buildGigetSource(owner, repo, skillPath, ref),
         sha,
       } satisfies RemoteSkill;
-    }),
-  );
-
-  return results
-    .filter((r): r is PromiseFulfilledResult<RemoteSkill> => r.status === 'fulfilled')
-    .map((r) => r.value)
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-type GHTreeItem = { type: 'blob' | 'tree'; path: string; sha: string };
+type GHTreeItem = { type: 'blob' | 'tree'; path: string; sha: string; size?: number };
 
 /**
  * Resolve a ref (branch name, tag, or commit SHA) to its commit SHA.
