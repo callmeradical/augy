@@ -3,25 +3,30 @@
  * augy — Homebrew for AI agent skills
  *
  * Commands:
- *   scan                       Find skills installed outside augy and import them
- *   bundle                     Write augy.json manifest from installed skills
- *   sync [path]                Install/update skills from an augy.json manifest
- *   install [url]              Install skills from a GitHub URL or bare name (via taps)
- *   update  [skill]            Check + upgrade skills with upstream changes
- *   list                       Show all installed skills + versions
- *   info <skill>               Detailed metadata, history, and description
- *   diff <skill> [sha] [sha2]  Browse file-level diffs between versions
- *   search [query]             Search all taps for available skills
- *   tap add|remove|list        Manage trusted repos (taps)
- *   rollback <skill> [sha]     Restore a skill to a previous version
- *   set-source <skill> <url>   Attach a source URL to an untracked skill
- *   uninstall <skill>          Remove a skill from agents + registry
- *   pin <skill>                Pin a skill so it is skipped during updates
- *   unpin <skill>              Unpin a previously pinned skill
- *   home set <repo>            Set your personal home repo for skill backup
- *   home push                  Push your skills manifest to the home repo
- *   home pull                  Fetch and sync skills from the home repo
- *   home show                  Show the current home repo configuration
+ *   scan                          Find skills installed outside augy and import them
+ *   bundle                        Write augy.json manifest from installed skills
+ *   sync [path]                   Install/update skills from an augy.json manifest
+ *   install [url]                 Install skills from a GitHub URL or bare name (via taps)
+ *   update  [skill]               Check + upgrade skills with upstream changes
+ *   list                          Show all installed skills + versions
+ *   info <skill>                  Detailed metadata, history, and description
+ *   diff <skill> [sha] [sha2]     Browse file-level diffs between versions
+ *   search [query]                Search all taps for available skills
+ *   tap add|remove|list           Manage trusted repos (taps)
+ *   rollback <skill> [sha]        Restore a skill to a previous version
+ *   set-source <skill> <url>      Attach a source URL to an untracked skill
+ *   uninstall <skill>             Remove a skill from agents + registry
+ *   pin <skill>                   Pin a skill so it is skipped during updates
+ *   unpin <skill>                 Unpin a previously pinned skill
+ *   home set <repo>               Set your personal home repo for skill backup
+ *   home push                     Push your skills manifest to the home repo
+ *   home pull                     Fetch and sync skills from the home repo
+ *   home show                     Show the current home repo configuration
+ *   skillset create|add|remove|list|show|delete  Manage named skill groups
+ *   use <skillset>                Swap active skills to match a skillset
+ *
+ * Environment:
+ *   AUGY_DEFAULT_AGENT            Default agent ID (overridden by --agent flag)
  */
 
 import { Command } from 'commander';
@@ -366,6 +371,80 @@ home
   .action(async () => {
     const { homeShowCommand } = await import('./commands/home.js');
     await homeShowCommand();
+  });
+
+// ---------------------------------------------------------------------------
+// skillset (nested subcommands)
+// ---------------------------------------------------------------------------
+const skillset = program
+  .command('skillset')
+  .description('Manage named skill groups (create, add, remove, list, show, delete)');
+
+skillset
+  .command('create <name>')
+  .description('Create a new empty skillset')
+  .action(async (name: string) => {
+    const { skillsetCreateCommand } = await import('./commands/skillset/create.js');
+    await skillsetCreateCommand(name);
+  });
+
+skillset
+  .command('add <name> <skills...>')
+  .description('Add skills to a skillset')
+  .action(async (name: string, skills: string[]) => {
+    const { skillsetAddCommand } = await import('./commands/skillset/add.js');
+    await skillsetAddCommand(name, skills);
+  });
+
+skillset
+  .command('remove <name> <skills...>')
+  .description('Remove skills from a skillset')
+  .action(async (name: string, skills: string[]) => {
+    const { skillsetRemoveCommand } = await import('./commands/skillset/remove.js');
+    await skillsetRemoveCommand(name, skills);
+  });
+
+skillset
+  .command('list')
+  .description('List all skillsets')
+  .action(async () => {
+    const { skillsetListCommand } = await import('./commands/skillset/list.js');
+    await skillsetListCommand();
+  });
+
+skillset
+  .command('show <name>')
+  .description('Show skills in a named skillset')
+  .action(async (name: string) => {
+    const { skillsetShowCommand } = await import('./commands/skillset/show.js');
+    await skillsetShowCommand(name);
+  });
+
+skillset
+  .command('delete <name>')
+  .description('Delete a skillset (does not uninstall skills)')
+  .option('--yes', 'Skip confirmation prompt')
+  .action(async (name: string, opts: { yes?: boolean }) => {
+    const { skillsetDeleteCommand } = await import('./commands/skillset/delete.js');
+    await skillsetDeleteCommand(name, opts);
+  });
+
+// Print help when `augy skillset` is invoked with no subcommand
+skillset.action(() => {
+  skillset.help();
+});
+
+// ---------------------------------------------------------------------------
+// use
+// ---------------------------------------------------------------------------
+program
+  .command('use <name>')
+  .description('Swap active skills to match the named skillset')
+  .option('-a, --agent <agent>', 'Target agent (default: AUGY_DEFAULT_AGENT or auto-detected)')
+  .option('--dry-run', 'Preview changes without applying them')
+  .action(async (name: string, opts: { agent?: string; dryRun?: boolean }) => {
+    const { useCommand } = await import('./commands/use.js');
+    await useCommand(name, opts);
   });
 
 // ---------------------------------------------------------------------------
