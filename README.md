@@ -207,6 +207,133 @@ augy unpin tdd
 
 ---
 
+## Skillsets
+
+A **skillset** is a named group of skills. Use `augy use <name>` to instantly swap your active skills to match a skillset — removing symlinks that don't belong and creating ones that do.
+
+This is the fastest way to maintain separate skill contexts (engineering, research, writing) and switch between them without manually managing what's enabled.
+
+### Concept
+
+```
+engineering  → tdd, github, commit, refactor
+research     → search, summarize, citations
+writing      → grammar, markdown, outline
+```
+
+Skills are shared on disk — a skill that appears in two skillsets has only one copy. Only symlinks are managed; skills installed as copies are left untouched.
+
+### End-to-end example
+
+```bash
+# Create two skillsets
+augy skillset create engineering
+augy skillset create research
+
+# Populate them
+augy skillset add engineering tdd github commit
+augy skillset add research search summarize
+
+# See what you have
+augy skillset list
+# Name              Skills  Updated
+# ─────────────────────────────────────────────────────────────
+# engineering       3       7/8/2026
+# research          2       7/8/2026
+
+# Inspect a skillset
+augy skillset show engineering
+# engineering
+#   tdd
+#   github
+#   commit
+
+# Switch to engineering mode (removes research symlinks, adds engineering ones)
+augy use engineering --agent claude
+# Agent:    Claude (claude)
+# Skillset: engineering (3 skills)
+#
+#   Remove (1)
+#     – summarize
+#
+#   Add (2)
+#     + tdd
+#     + github
+#
+# ✓ engineering applied to Claude (−1 removed, +2 added, 1 unchanged)
+
+# Preview a switch without making changes
+augy use research --agent claude --dry-run
+
+# Remove a skillset you no longer need (does NOT uninstall skills)
+augy skillset delete research --yes
+```
+
+### Skillset commands
+
+#### `augy skillset create <name>`
+Create a new empty skillset. Names must be alphanumeric and may include hyphens.
+
+```bash
+augy skillset create engineering
+augy skillset create my-writing-set
+```
+
+#### `augy skillset add <name> <skill...>`
+Add one or more skills to a skillset. Warns if a skill is not installed, but still records it (install it later with `augy install`).
+
+```bash
+augy skillset add engineering tdd github commit
+```
+
+#### `augy skillset remove <name> <skill...>`
+Remove skills from a skillset. Does not uninstall the skill itself.
+
+```bash
+augy skillset remove engineering commit
+```
+
+#### `augy skillset list`
+Print a table of all skillsets: name, skill count, and last-updated date.
+
+```bash
+augy skillset list
+```
+
+#### `augy skillset show <name>`
+Print every skill in the named skillset.
+
+```bash
+augy skillset show engineering
+```
+
+#### `augy skillset delete <name> [--yes]`
+Delete a skillset. Prompts for confirmation unless `--yes` is passed. Does **not** uninstall or remove any skill files.
+
+```bash
+augy skillset delete research
+augy skillset delete research --yes   # skip confirmation
+```
+
+### `augy use <name>`
+
+Swap the active skill symlinks for the target agent to match the named skillset:
+
+- **Removes** symlinks not in the skillset
+- **Creates** symlinks for skills in the skillset that aren't already linked
+- **Ignores** skills installed as copies (not symlinks)
+- Warns and skips any skill in the set that isn't installed
+- Exits with a warning (no changes) if the skillset is empty
+
+```bash
+augy use engineering                       # auto-detect agent
+augy use engineering --agent opencode      # explicit agent
+augy use engineering --dry-run             # preview without changes
+AUGY_DEFAULT_AGENT=claude augy use research  # via env var
+```
+
+---
+
 ## Taps
 
 Taps are GitHub repos you trust as skill sources. The tap system is how augy stays decentralized — there is no central index, just repos you choose to register.
@@ -241,6 +368,7 @@ Every upgrade archives the current skill files to `~/.augy/versions/<skill>/<sha
 | Variable | Default | Description |
 |---|---|---|
 | `AUGY_HOME` | `~/.augy` | Override augy's home directory |
+| `AUGY_DEFAULT_AGENT` | — | Default agent ID used by `augy use` and other commands that accept `--agent`. The `--agent` flag always takes precedence. Example: `AUGY_DEFAULT_AGENT=opencode` |
 | `CODEX_HOME` | `~/.codex` | Override Codex agent path |
 | `GITHUB_TOKEN` | — | Raise GitHub API rate limit from 60 → 5,000 req/hr |
 
