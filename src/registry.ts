@@ -28,6 +28,12 @@ export interface AgentInstall {
 }
 
 export interface RegistrySkill {
+  /**
+   * Absolute path to the canonical copy of this skill in the augy store
+   * (~/.augy/store/<name>/). Agent paths are symlinks pointing here.
+   * Undefined on skills installed before store support was added.
+   */
+  storePath?: string;
   name: string;
   /** Human-readable label if set by user */
   label?: string;
@@ -117,6 +123,14 @@ export function versionsDir(): string {
   return join(augyHome(), 'versions');
 }
 
+export function storeDir(): string {
+  return join(augyHome(), 'store');
+}
+
+export function skillStorePath(skillName: string): string {
+  return join(storeDir(), skillName);
+}
+
 export function versionArchivePath(skillName: string, sha: string): string {
   return join(versionsDir(), skillName, sha);
 }
@@ -181,6 +195,7 @@ export function createSkillRecord(opts: {
   agentIds: string[];
   agentPaths: Record<string, string>;
   tap?: string;
+  storePath?: string;
 }): RegistrySkill {
   const now = new Date().toISOString();
   return {
@@ -193,6 +208,7 @@ export function createSkillRecord(opts: {
     updatedAt: now,
     pinned: false,
     tap: opts.tap,
+    storePath: opts.storePath,
     agents: Object.fromEntries(
       opts.agentIds.map((id) => [
         id,

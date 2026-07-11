@@ -17,6 +17,7 @@ import {
   readRegistry,
   RegistrySkill,
   shortSha,
+  skillStorePath,
   writeRegistry,
 } from '../registry.js';
 import { archiveVersion } from '../versions.js';
@@ -172,25 +173,33 @@ export async function updateCommand(nameArg?: string, opts: { all?: boolean } = 
     s2.start(`Upgrading ${chalk.cyan(skill.name)}…`);
 
     try {
-      // Archive current version from first active agent path
-      const firstAgent = Object.entries(skill.agents)[0];
-      if (firstAgent) {
-        const [, install] = firstAgent;
-        if (install.active) {
-          await archiveVersion(install.path, skill.name, skill.sha);
+      // Archive current version from the canonical store (preferred) or first agent path
+      const archiveSource = skill.storePath ?? Object.values(skill.agents).find(a => a.active)?.path;
+      if (archiveSource) {
+        await archiveVersion(archiveSource, skill.name, skill.sha);
+      }
+
+      // Download new version to the canonical store
+      const storePath = skillStorePath(skill.name);
+      await rm(storePath, { recursive: true, force: true });
+      await mkdir(storePath, { recursive: true });
+      await downloadSkill(gigetSource, storePath);
+
+      // Agent symlinks already point at the store — no per-agent work needed.
+      // For legacy copies (no storePath), update each agent path directly.
+      if (!skill.storePath) {
+        for (const [agentId, install] of Object.entries(skill.agents)) {
+          if (!install.active) continue;
+          const agent = agentById(agentId);
+          if (!agent) continue;
+          const dest = agentSkillPath(agent, skill.name);
+          await rm(dest, { recursive: true, force: true });
+          await mkdir(dest, { recursive: true });
+          await downloadSkill(gigetSource, dest);
         }
       }
 
-      // Download new version to all agent paths
-      for (const [agentId, install] of Object.entries(skill.agents)) {
-        if (!install.active) continue;
-        const agent = agentById(agentId);
-        if (!agent) continue;
-        const dest = agentSkillPath(agent, skill.name);
-        await rm(dest, { recursive: true, force: true });
-        await mkdir(dest, { recursive: true });
-        await downloadSkill(gigetSource, dest);
-      }
+      skill.storePath = storePath;
 
       // Push old SHA to history
       const archivedEntry: InstalledVersion = {

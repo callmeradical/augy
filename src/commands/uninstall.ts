@@ -11,7 +11,7 @@ import { rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
-import { getSkill, readRegistry, removeSkill, versionsDir, writeRegistry } from '../registry.js';
+import { getSkill, readRegistry, removeSkill, versionsDir, writeRegistry, skillStorePath } from '../registry.js';
 import { pruneVersions } from '../versions.js';
 
 export async function uninstallCommand(nameArg: string): Promise<void> {
@@ -72,7 +72,7 @@ export async function uninstallCommand(nameArg: string): Promise<void> {
     pruneArchives = pruneAnswer as boolean;
   }
 
-  // Remove from agent paths
+  // Remove from agent paths and canonical store
   const s = spinner();
   s.start(`Removing ${chalk.cyan(nameArg)}…`);
 
@@ -85,6 +85,16 @@ export async function uninstallCommand(nameArg: string): Promise<void> {
       } catch (err) {
         errors.push(`Failed to remove ${path}: ${String(err)}`);
       }
+    }
+  }
+
+  // Remove the canonical store copy
+  const storePath = skill.storePath ?? skillStorePath(nameArg);
+  if (existsSync(storePath)) {
+    try {
+      await rm(storePath, { recursive: true, force: true });
+    } catch (err) {
+      errors.push(`Failed to remove store path ${storePath}: ${String(err)}`);
     }
   }
 

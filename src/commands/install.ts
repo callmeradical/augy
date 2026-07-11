@@ -10,15 +10,16 @@ import {
   text,
 } from '@clack/prompts';
 import chalk from 'chalk';
-import { mkdir, rm } from 'fs/promises';
+import { mkdir, rm, symlink } from 'fs/promises';
 
-import { AGENTS, agentSkillPath, detectInstalledAgents } from '../agents.js';
+import { AGENTS, agentSkillPath, detectInstalledAgents, isAgentInstalled } from '../agents.js';
 import { discoverSkills, parseGitHubUrl, RemoteSkill } from '../github.js';
 import {
   createSkillRecord,
   getSkill,
   readRegistry,
   shortSha,
+  skillStorePath,
   writeRegistry,
 } from '../registry.js';
 import { downloadSkill } from '../github.js';
@@ -142,18 +143,21 @@ export async function installCommand(urlArg?: string, opts: { agent?: string[] }
         s2.message(`${chalk.cyan(skill.name)} already installed — updating record`);
       }
 
-      // Build agent path map
+      // 1. Download to the canonical store (~/.augy/store/<name>/)
+      const storePath = skillStorePath(skill.name);
+      await rm(storePath, { recursive: true, force: true });
+      await mkdir(storePath, { recursive: true });
+      await downloadSkill(skill.gigetSource, storePath);
+
+      // 2. Symlink from each agent path → store
       const agentPaths: Record<string, string> = {};
       for (const agent of selectedAgents) {
-        agentPaths[agent.id] = agentSkillPath(agent, skill.name);
-      }
-
-      // Download to each agent path
-      for (const agent of selectedAgents) {
-        const dest = agentPaths[agent.id]!;
-        await mkdir(dest, { recursive: true });
+        const dest = agentSkillPath(agent, skill.name);
+        agentPaths[agent.id] = dest;
+        await mkdir(agent.skillsPath, { recursive: true });
+        // Remove existing entry (copy or stale symlink) before linking
         await rm(dest, { recursive: true, force: true });
-        await downloadSkill(skill.gigetSource, dest);
+        await symlink(storePath, dest);
       }
 
       // Write / update registry
@@ -165,6 +169,7 @@ export async function installCommand(urlArg?: string, opts: { agent?: string[] }
         agentIds: selectedAgents.map((a) => a.id),
         agentPaths,
         tap: resolvedTap,
+        storePath,
       });
       // Carry forward history + pinned status if re-installing
       if (existing) {
@@ -224,17 +229,26 @@ async function promptSkillSelection(
 }
 
 async function promptAgentSelection() {
-  const detected = new Set(detectInstalledAgents().map((a) => a.id));
+  // Sort detected agents first, undetected last — keeps the list focused
+  const sorted = [...AGENTS].sort((a, b) => {
+    const aDetected = isAgentInstalled(a) ? 0 : 1;
+    const bDetected = isAgentInstalled(b) ? 0 : 1;
+    return aDetected - bDetected;
+  });
+
   return filterableMultiselect({
     message: 'Install for which agents?',
-    options: AGENTS.map((a) => ({
-      value: a,
-      label: a.name,
-      hint: detected.has(a.id)
-        ? chalk.dim(a.skillsPath)
-        : chalk.dim('not detected'),
-      selected: detected.has(a.id),
-    })),
+    options: sorted.map((a) => {
+      const detected = isAgentInstalled(a);
+      return {
+        value: a,
+        label: a.name,
+        hint: detected
+          ? chalk.dim(a.skillsPath)
+          : chalk.dim('not detected'),
+        selected: detected,
+      };
+    }),
   });
 }
 
