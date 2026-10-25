@@ -55,7 +55,8 @@ program
   .command('install [url]')
   .description('Install skills from a GitHub URL or owner/repo[/path]')
   .option('-a, --agent <agents...>', 'Target agent(s): opencode, claude, codex')
-  .action(async (url?: string, opts?: { agent?: string[] }) => {
+  .option('--yes', 'Non-interactive: install all discovered skills to --agent or detected agents (CI-friendly)')
+  .action(async (url?: string, opts?: { agent?: string[]; yes?: boolean }) => {
     const { installCommand } = await import('./commands/install.js');
     await installCommand(url, opts ?? {});
   });

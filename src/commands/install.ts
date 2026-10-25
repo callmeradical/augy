@@ -30,12 +30,16 @@ import { filterableMultiselect } from '../ui/filterable-multiselect.js';
 // Entry point
 // ---------------------------------------------------------------------------
 
-export async function installCommand(urlArg?: string, opts: { agent?: string[] } = {}): Promise<void> {
+export async function installCommand(urlArg?: string, opts: { agent?: string[]; yes?: boolean } = {}): Promise<void> {
   intro(chalk.bold('augy') + chalk.dim(' — skill installer'));
 
   const registry = await readRegistry();
 
   // 1. Get the source — URL, owner/repo, or bare skill name resolved via taps
+  if (!urlArg && opts.yes) {
+    cancel('--yes requires a URL, owner/repo[/path], or skill name argument');
+    process.exit(1);
+  }
   const rawUrl = urlArg ?? (await promptUrl());
   if (isCancel(rawUrl) || !rawUrl) return bail();
 
@@ -62,6 +66,14 @@ export async function installCommand(urlArg?: string, opts: { agent?: string[] }
 
     // Multiple tap matches → let user pick
     let chosen: TapSkill;
+    if (Array.isArray(tapResult) && opts.yes) {
+      s.stop(chalk.yellow(`Found "${rawUrl}" in ${tapResult.length} taps`));
+      cancel(
+        `"${rawUrl}" is ambiguous with --yes. Use a full path instead:\n` +
+          tapResult.map((ts) => `  augy install ${ts.tapKey}/${ts.repoPath} --yes`).join('\n'),
+      );
+      process.exit(1);
+    }
     if (Array.isArray(tapResult)) {
       s.stop(`Found "${rawUrl}" in ${tapResult.length} taps — please choose`);
       const pick = await select({
@@ -106,17 +118,28 @@ export async function installCommand(urlArg?: string, opts: { agent?: string[] }
     s.stop(`Found ${chalk.green(String(discovered.length))} skill(s)`);
   }
 
-  // 3. Select skills — always show picker so the user knows what's available
-  const selectedSkills = await promptSkillSelection(discovered);
+  // 3. Select skills — skip picker when --yes, otherwise always show it
+  const selectedSkills = opts.yes
+    ? discovered
+    : await promptSkillSelection(discovered);
 
   if (isCancel(selectedSkills) || !selectedSkills.length) return bail();
 
   // 4. Select agents
   const preselectedAgents = opts.agent ?? [];
-  const selectedAgents =
-    preselectedAgents.length > 0
-      ? AGENTS.filter((a) => preselectedAgents.includes(a.id))
-      : await promptAgentSelection();
+  let selectedAgents: Awaited<ReturnType<typeof promptAgentSelection>>;
+  if (preselectedAgents.length > 0) {
+    selectedAgents = AGENTS.filter((a) => preselectedAgents.includes(a.id));
+  } else if (opts.yes) {
+    selectedAgents = AGENTS.filter((a) => isAgentInstalled(a));
+  } else {
+    selectedAgents = await promptAgentSelection();
+  }
+
+  if (opts.yes && Array.isArray(selectedAgents) && !selectedAgents.length) {
+    cancel('--yes: no agents detected; pass --agent <ids...> explicitly');
+    process.exit(1);
+  }
 
   if (isCancel(selectedAgents) || !selectedAgents.length) return bail();
 
@@ -128,8 +151,10 @@ export async function installCommand(urlArg?: string, opts: { agent?: string[] }
   );
   console.log('\n' + lines.join('\n') + '\n');
 
-  const ok = await confirm({ message: 'Install the above skill(s)?' });
-  if (isCancel(ok) || !ok) return bail();
+  if (!opts.yes) {
+    const ok = await confirm({ message: 'Install the above skill(s)?' });
+    if (isCancel(ok) || !ok) return bail();
+  }
 
   // 6. Install each skill
   for (const skill of selectedSkills) {
