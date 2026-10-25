@@ -22,7 +22,7 @@ function makeRegistry(skills: Record<string, { agents: Record<string, { path: st
 }
 
 function makeAgent(id: string, name: string): Agent {
-  return { id, name, skillsPath: `/home/.${id}/skills`, skillFile: 'SKILL.md' };
+  return { id, name, skillsPath: `/home/.${id}/skills`, skillFile: 'SKILL.md', detect: [] };
 }
 
 type OnDisk = Map<string, Array<{ agent: Agent; path: string }>>;
