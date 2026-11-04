@@ -1,0 +1,72 @@
+# Validation: augy-cli-foundation
+
+Code checked: committed HEAD `c725774`, read through `git show HEAD:<path>`. Experiments ran in a sandbox built with `git archive HEAD` and `npm ci --ignore-scripts`, using the built `dist/index.js` on Node 24.21. `HOME`, `AUGY_HOME`, and `XDG_CACHE_HOME` pointed at temp dirs, and `PATH` held only fake agent binaries and a fake `gh`. The fake `gh` served fixture repos and logged every call. giget downloads went to a local tarball server (via `GIGET_GITHUB_URL`) that logged every request and its `Authorization` header and could be told to fail. Interactive prompts ran under a pty driver. A few read-only checks used public GitHub (`anthropics/skills`, `nodejs/node`).
+
+## Summary
+
+Scenario verdicts (31): **Conforms 18**, **Deviates 5**, **Missing 0**, **Unverifiable 1**, **Deferred 7**.
+
+Requirement verdicts (15): **Conforms 9**, **Deviates 4** (GitHub-only registry, version is a commit SHA, local archive and rollback, lifecycle verbs), **Unverifiable 1** (Distribution, Node 18 part), **Deferred 1** (feature areas).
+
+## Results
+
+| Requirement / Scenario | Verdict | Evidence | How checked | Notes |
+|---|---|---|---|---|
+| GitHub is the only skill registry / Install with only GitHub access | Conforms | src/github.ts:17-26, 347-354; src/commands/install.ts:102-110 | ran: `install alice/skills/skills/tdd --yes --agent claude`. The gh log showed only `repos/...` calls, and the server log showed only the `tarball/main` GET | No augy account, key, or service. giget is called with a `github:` source, so its template registry isn't contacted. |
+| GitHub is the only skill registry / Private repo treated like a public one | Deviates | src/github.ts:347-354 (giget, no credentials); giget 3.2.0 `downloadTemplate` reads only `GIGET_AUTH` | ran: `install corp/private/skills/secret --yes` with a gh login. Discovery succeeded, but the tarball GET was sent with `auth:null` and got a 404. Install printed `✗ secret`, then "Done!", and exited 0 | Works only when the undocumented `GIGET_AUTH` is set (control run succeeded with it). Details in `multi-agent-support` (github-access). |
+| The user decides which sources are trusted / Bare name resolves only through the user's taps | Conforms | src/commands/install.ts:47, 52-96; src/taps.ts:62-129 | ran: `install REVIEW --yes` with taps `tapa/skills` and `tapb/skills` resolved only through `tapa`. With no taps, `install tdd --yes` made 0 gh calls | |
+| The user decides which sources are trusted / No registered source matches | Conforms | src/commands/install.ts:58-65 | ran: `install nosuch --yes` exited 1. No registry or store was written | |
+| A skill is a directory containing SKILL.md / Plain folder with SKILL.md | Conforms | src/github.ts:155-157, 178-184 | ran: `acme/my-skill`, whose root holds only `SKILL.md`, installed as `my-skill` | |
+| A version is an upstream commit SHA / Lockfile records the commit | Deviates | src/github.ts:211-217 (tree SHA); src/github.ts:254-258 (tag ref `object.sha`) | ran: `install acme/catalog --yes` recorded `sha` values that are git tree SHAs (the fixture marks tree SHAs with a `t` prefix). On real GitHub, `anthropics/skills/skills` recorded `pdf` = `6369f46`, and `git/commits/6369f46` returns 404 because that is the tree SHA of `skills/pdf`. read: annotated tags return a tag-object SHA (`nodejs/node` `v20.0.0` → `type: "tag"`) and augy records it as-is | Commit SHAs are recorded only when the target path itself is a skill (branch head commit, src/github.ts:182). Catalog installs and every tap install record tree SHAs. |
+| A version is an upstream commit SHA / Version shown as a SHA | Deviates | src/commands/list.ts:44-53; src/commands/info.ts:48-51 | ran: `list` and the install summaries show `@t60565f…` tree SHAs for catalog installs | Same root cause as above. The display faithfully shows whatever was recorded. |
+| The lockfile is a user-owned plain JSON file / Lockfile readable without augy | Conforms | src/registry.ts:157-163 | ran: parsed `registry.json` with plain `node -e require(...)`. It holds `source` and `sha` | Pretty-printed with a 2-space indent. |
+| AUGY_HOME relocates augy's home directory / Lockfile under AUGY_HOME | Conforms | src/registry.ts:113-120 | ran: with `AUGY_HOME=$C/sandbox-home`, install, update, and `skillset create` wrote only under it, and `$HOME/.augy` did not exist afterward | Recorded archive paths and messages still name `~/.augy`. See `multi-agent-support`. |
+| Previous versions are archived locally / Upgrade keeps the old version | Conforms | src/commands/update.ts:177-180; src/versions.ts:21-34 | ran: after an upstream change and `update --all`, `versions/tdd/<oldsha>/` held the old content (later restored by rollback as `# tdd alice@main`) | `augy sync` upgrades never archive (src/commands/sync.ts:224-246). Not this scenario's command. |
+| Previous versions are archived locally / Rollback uses the local archive | Deviates | src/commands/rollback.ts:91-97; src/versions.ts:21-34, 42-61 | ran: on a store-linked skill, `rollback tdd <archived sha>` failed with `ERR_FS_CP_NON_DIR_TO_DIR` and exit 1, leaving an empty `versions/tdd/<current sha>/`. A second run "succeeded": it replaced both agent links with real copies, and the store stayed on the newer version | No hosted service is involved, but rollback of a normally installed skill fails the first time and corrupts the archive of the version it displaces. |
+| Package-manager lifecycle verbs / Update all skills | Conforms | src/commands/update.ts:96-116, 170-229 | ran: two skills changed upstream, and `update --all` moved both (`commit`, `tdd`). The agents showed the new content | |
+| Package-manager lifecycle verbs / Review before upgrading | Deviates | src/commands/diff.ts:122-145; src/fileDiff.ts:100-140 | ran on real GitHub: for `anthropics/skills/skills/pdf` (path install, commit SHA), diff showed file changes, and the store and registry were untouched. For the same skill installed from the catalog `anthropics/skills/skills`, diff printed "Something went wrong" (exit 0) | diff calls `git/commits/<sha>`. For catalog and tap installs that SHA is a tree SHA, so the upstream fetch 404s. |
+| Package-manager lifecycle verbs / Pinned skill stays fixed | Conforms | src/commands/update.ts:52-65 | ran: `pin commit`, upstream change, `update --all` printed "Skipping 1 pinned skill(s): commit", and the content and SHA stayed | `install` (re-install) ignores the pin. Not this scenario. |
+| One copy deployed to many agents / Same content in every agent | Conforms | src/commands/install.ts:171-186 | ran: install to Claude, Codex, and Cursor gave three symlinks to `~/.augy/store/tdd`. After `update`, every agent showed the new content | Only `install` and `update` keep this. `sync`, `home pull`, `author new`, scan imports, and rollback write per-agent copies. |
+| Detected agents are the default targets / Only installed agents pre-selected | Conforms | src/commands/install.ts:256-278; src/agents.ts:276-296 | ran (pty): with `claude` and `codex` the only evidence, the agent picker pre-selected exactly Claude and Codex, and the rest showed "not detected" | With `gh` on PATH, Copilot also counts as installed (see Spec issues). |
+| Interactive by default / Ambiguous choice prompts | Conforms | src/commands/install.ts:77-88, 122-124; src/ui/filterable-multiselect.ts:51-225 | ran (pty): a multi-skill source showed the skill picker, and a name in two taps showed "Which tap…", each waiting for input | |
+| Scriptable non-interactive modes / CI install without prompts | Conforms | src/commands/install.ts:122-157 | ran: `install acme/five --yes --agent claude codex cursor` with stdin `/dev/null` completed with exit 0 | Flags offered: install `--yes`; update `--all`; sync `--yes` and `--dry-run` (src/index.ts:57-58, 70, 123-125). |
+| Scriptable non-interactive modes / Missing choice fails instead of hanging | Conforms | src/commands/install.ts:39-42, 69-76, 139-142 | ran: `install --yes` with no source exited 1. `install tdd --yes` with two matching taps exited 1. `--yes` with no detected agents exited 1. None prompted | |
+| Never remove skills the user didn't remove / Sync leaves extra skills installed | Conforms | src/commands/sync.ts:9-10, 214-257 | ran: a manifest with only `tdd`, synced with `--yes`, left `commit` and `my-skill` installed and tracked | sync turned `tdd` from a store link into a copy and dropped `storePath`. See Behavior not covered. |
+| Never remove skills the user didn't remove / Switching skillsets does not uninstall | Conforms | src/commands/use.ts:100-114, 164-173 | ran: `use focus` (one, two) unlinked three, four, and five from Claude. All five stayed in `registry.json`, and `store/*` stayed on disk | The registry still lists Claude for the unlinked skills. |
+| Never remove skills the user didn't remove / Deleting a skillset keeps skill files | Conforms | src/commands/skillset/delete.ts:38-39 | ran: `skillset delete focus --yes` left `store/*` and every agent folder unchanged | |
+| Feature areas reachable / Taps and short names | Deferred to taps-and-discovery | src/index.ts:167-195, 54-62 | read | `tap add/remove/list` exist. |
+| Feature areas reachable / Adopt hand-installed skills | Deferred to adopting-existing-skills | src/index.ts:134-140 | read | `scan` exists. |
+| Feature areas reachable / Team manifest | Deferred to team-manifests | src/index.ts:107-129 | read | `bundle` and `sync` exist. |
+| Feature areas reachable / Home repo backup and restore | Deferred to home-repo | src/index.ts:336-375 | read | `home set/push/pull/show` exist. |
+| Feature areas reachable / Machine contexts and tags | Deferred to machine-contexts-and-tags | src/index.ts:250-307 | read | `context` and `tag` exist. |
+| Feature areas reachable / Skillsets | Deferred to skillsets | src/index.ts:380-449 | read | `skillset …` and `use` exist. |
+| Feature areas reachable / Authoring | Deferred to skill-authoring | src/index.ts:312-331 | read | `author new/edit` exist. |
+| Distribution / Installed from npm | Unverifiable | package.json (`name`, `bin.augy`, `engines.node >=18`) | ran: `npm install @callmeradical/augy` (0.11.0) into a temp prefix on Node 24. `node_modules/.bin/augy --version` printed 0.11.0 | Depends on a Node 18 runtime, which isn't available here. Dependency `commander@12` requires Node 18 or later. Other dependencies declare no engines. |
+| Distribution / License | Conforms | package.json `license: MIT`; LICENSE | ran: the published package's `package.json` says MIT, and its LICENSE starts "MIT License" | |
+
+## Spec issues
+
+- **Scriptable non-interactive modes** lists `--yes`, `--all`, `--dry-run` "on the commands that automation needs, at least install, update, and sync". It's unclear whether each command needs all three or whether the set is spread across commands. The code spreads them out: install has `--yes` only, update has `--all` only, and sync has `--yes` and `--dry-run`. This was judged Conforms on the second reading.
+- **A version is an upstream commit SHA** conflicts with the sibling `skill-installation` spec, which only asks for "`sha` and `shortSha`" without saying they are commit SHAs. The two specs should agree on what a version is.
+- **Detected agents are the default targets**: the sibling detection table counts `gh` on PATH as Copilot evidence, and augy requires `gh`. On any working machine Copilot is therefore "installed", so a "machine with two supported agents" always includes Copilot.
+- **Feature areas reachable** scenarios only point at sibling changes. As written they can't fail here beyond "a command exists".
+- **Distribution / Installed from npm** needs a Node 18 environment to verify. Engines metadata alone doesn't prove it runs.
+- **Rollback uses the local archive** says nothing about what rollback does to the store and the agent links. The code's conversion of links into copies is untested by any scenario.
+
+## Behavior not covered by the spec
+
+- A failed re-install or update destroys the working copy. The store folder is deleted before the download (src/commands/install.ts:172-175; src/commands/update.ts:183-186). Ran: with the cache cleared and downloads failing, a re-install left `store/tdd/` empty, so both agent links resolved to an empty folder, while the registry still showed the old SHA.
+- `augy sync` replaces store links with per-agent copies, clears `storePath`, never archives on upgrade, and drops `tap`, `contexts`, and `label` (src/commands/sync.ts:224-246). Ran: it reported "Upgrade tdd t281b78 → 41f31b1" even though the content hadn't changed (tree SHA compared against commit SHA).
+- `update`, `sync`, `scan`, and `diff` fall back to `remote[0]` when the skill's name isn't found at its source (src/commands/update.ts:102; src/commands/sync.ts:221; src/commands/scan.ts:283; src/commands/diff.ts:130). That can deploy a different skill's content under this name.
+- Right after a bare-name (tap) install, `update --all` reports a spurious update (`review t76ffc3 → 7700825`) and re-downloads. Ran.
+- `augy use` removes every symlink in the agent's skills folder that isn't in the skillset, including links augy didn't create (src/commands/use.ts:100-114).
+- A relative `AUGY_HOME` produces relative, broken agent links. Ran: `my-skill -> relhome/store/my-skill` doesn't resolve. `AUGY_HOME=""` is taken as an empty path (src/registry.ts:115, `??`).
+
+## PRD factual errors
+
+`docs/prd/augy-product-overview.md`:
+
+- Testing Decisions: "automated tests cover … GitHub source parsing". There is no test of `parseGitHubUrl` or discovery. `src/github.test.ts` covers only `getFileFromRepo` and `putFileToRepo`. The skill-installation PRD itself says there are none.
+- Implementation Decisions: "A version is a commit SHA … drift, diffs, and rollbacks are all expressed in upstream commit SHAs". Catalog and tap installs record git tree SHAs (src/github.ts:211-217), and annotated tags record tag-object SHAs (src/github.ts:254-258).
+- Implementation Decisions: "Skills are stored once and linked into each target agent". `sync`, `home pull`, `author new`, scan imports, and rollback write per-agent copies (src/commands/sync.ts:224-231; src/commands/home.ts:358-366; src/commands/author.ts:96-101; src/versions.ts:54-60).
+- Implementation Decisions: "Before an upgrade overwrites a skill, augy archives the previous version". `augy sync` upgrades overwrite without archiving (src/commands/sync.ts:214-246).

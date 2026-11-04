@@ -1,0 +1,45 @@
+schema: spec-driven
+
+context: |
+  Specs are derived from the PRDs in docs/prd/, never from the code.
+  proposal.md, specs, design.md and tasks.md must be written from the PRD
+  alone. Do not read the source, git history or tests while authoring them.
+  Requirements state what the product SHALL do for its users, and each must
+  trace to a PRD user story or product decision (cite US-n). Do not write a
+  requirement for behavior the PRD doesn't call for.
+  augy is being archived. Once a change is authored, a separate validator
+  compares the committed code (HEAD c725774; read it with `git show HEAD:<path>`
+  because the working tree has an unresolved stash conflict) against the specs.
+  It records results in validation.md and checks off tasks only where the
+  code conforms. Validators never edit specs.
+
+# Project context (optional)
+# Add only constraints that should guide OpenSpec artifacts and workflows.
+# Include constraints an agent cannot infer by reading the code.
+# Keep general project documentation and discoverable codebase facts out.
+# Example:
+#   context: |
+#     Designs and tasks must cover Windows, macOS, and Linux
+#     Write all artifacts in Spanish
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
