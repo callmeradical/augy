@@ -12,6 +12,7 @@ import { cp, mkdir, rm } from 'fs/promises';
 import { agentById, agentSkillPath } from '../agents.js';
 import { discoverSkills, downloadSkill, parseGitHubUrl } from '../github.js';
 import {
+  canonicalSkillPath,
   InstalledVersion,
   listSkills,
   readRegistry,
@@ -181,15 +182,22 @@ export async function updateCommand(nameArg?: string, opts: { all?: boolean } = 
         }
       }
 
-      // Download new version to all agent paths
-      for (const [agentId, install] of Object.entries(skill.agents)) {
-        if (!install.active) continue;
-        const agent = agentById(agentId);
-        if (!agent) continue;
-        const dest = agentSkillPath(agent, skill.name);
-        await rm(dest, { recursive: true, force: true });
-        await mkdir(dest, { recursive: true });
-        await downloadSkill(gigetSource, dest);
+      // Download new version — prefer canonical store, fall back to per-agent
+      if (skill.canonicalPath) {
+        await rm(skill.canonicalPath, { recursive: true, force: true });
+        await mkdir(skill.canonicalPath, { recursive: true });
+        await downloadSkill(gigetSource, skill.canonicalPath);
+        // Agent symlinks continue to point to canonical — no changes needed
+      } else {
+        for (const [agentId, install] of Object.entries(skill.agents)) {
+          if (!install.active) continue;
+          const agent = agentById(agentId);
+          if (!agent) continue;
+          const dest = agentSkillPath(agent, skill.name);
+          await rm(dest, { recursive: true, force: true });
+          await mkdir(dest, { recursive: true });
+          await downloadSkill(gigetSource, dest);
+        }
       }
 
       // Push old SHA to history

@@ -435,6 +435,17 @@ skillset.action(() => {
 });
 
 // ---------------------------------------------------------------------------
+// migrate
+// ---------------------------------------------------------------------------
+program
+  .command('migrate')
+  .description('Move existing skills to the canonical store (~/.augy/skills/) and replace agent copies with symlinks')
+  .action(async () => {
+    const { migrateCommand } = await import('./commands/migrate.js');
+    await migrateCommand();
+  });
+
+// ---------------------------------------------------------------------------
 // use
 // ---------------------------------------------------------------------------
 program

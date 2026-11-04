@@ -177,22 +177,25 @@ export async function useCommand(
     const skillRecord = registry.skills[skillName];
     if (!skillRecord) continue;
 
-    // The installed skill source path for this agent (or fall back to any agent)
-    const agentInstall = skillRecord.agents[agent.id];
+    // Resolve source: prefer canonical store, fall back to any agent path
     let sourcePath: string;
 
-    if (agentInstall?.path && existsSync(agentInstall.path)) {
-      sourcePath = agentInstall.path;
+    if (skillRecord.canonicalPath && existsSync(skillRecord.canonicalPath)) {
+      sourcePath = skillRecord.canonicalPath;
     } else {
-      // Try to find a source path from another agent install
-      const otherInstall = Object.values(skillRecord.agents).find(
-        (ai) => ai.path && existsSync(ai.path),
-      );
-      if (!otherInstall) {
-        errors.push(`Skill "${skillName}" has no resolvable path — skipping.`);
-        continue;
+      const agentInstall = skillRecord.agents[agent.id];
+      if (agentInstall?.path && existsSync(agentInstall.path)) {
+        sourcePath = agentInstall.path;
+      } else {
+        const otherInstall = Object.values(skillRecord.agents).find(
+          (ai) => ai.path && existsSync(ai.path),
+        );
+        if (!otherInstall) {
+          errors.push(`Skill "${skillName}" has no resolvable path — skipping.`);
+          continue;
+        }
+        sourcePath = otherInstall.path;
       }
-      sourcePath = otherInstall.path;
     }
 
     const dest = agentSkillPath(agent, skillName);

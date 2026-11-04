@@ -10,11 +10,12 @@ import {
   text,
 } from '@clack/prompts';
 import chalk from 'chalk';
-import { mkdir, rm } from 'fs/promises';
+import { mkdir, rm, symlink } from 'fs/promises';
 
 import { AGENTS, agentSkillPath, detectInstalledAgents } from '../agents.js';
 import { discoverSkills, parseGitHubUrl, RemoteSkill } from '../github.js';
 import {
+  canonicalSkillPath,
   createSkillRecord,
   getSkill,
   readRegistry,
@@ -148,12 +149,17 @@ export async function installCommand(urlArg?: string, opts: { agent?: string[] }
         agentPaths[agent.id] = agentSkillPath(agent, skill.name);
       }
 
-      // Download to each agent path
+      // Download once to the canonical store
+      const canonical = canonicalSkillPath(skill.name);
+      await rm(canonical, { recursive: true, force: true });
+      await mkdir(canonical, { recursive: true });
+      await downloadSkill(skill.gigetSource, canonical);
+
+      // Symlink each agent's skills dir → canonical copy
       for (const agent of selectedAgents) {
         const dest = agentPaths[agent.id]!;
-        await mkdir(dest, { recursive: true });
         await rm(dest, { recursive: true, force: true });
-        await downloadSkill(skill.gigetSource, dest);
+        await symlink(canonical, dest);
       }
 
       // Write / update registry
@@ -165,6 +171,7 @@ export async function installCommand(urlArg?: string, opts: { agent?: string[] }
         agentIds: selectedAgents.map((a) => a.id),
         agentPaths,
         tap: resolvedTap,
+        canonicalPath: canonical,
       });
       // Carry forward history + pinned status if re-installing
       if (existing) {

@@ -88,6 +88,15 @@ export async function uninstallCommand(nameArg: string): Promise<void> {
     }
   }
 
+  // Remove canonical store copy if present
+  if (skill.canonicalPath && existsSync(skill.canonicalPath)) {
+    try {
+      await rm(skill.canonicalPath, { recursive: true, force: true });
+    } catch (err) {
+      errors.push(`Failed to remove canonical copy ${skill.canonicalPath}: ${String(err)}`);
+    }
+  }
+
   // Prune version archives
   if (pruneArchives) {
     try {

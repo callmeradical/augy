@@ -32,6 +32,12 @@ export interface RegistrySkill {
   /** Human-readable label if set by user */
   label?: string;
   /**
+   * Canonical on-disk path for the skill's files: ~/.augy/skills/<name>/
+   * Agent skill directories hold symlinks pointing here.
+   * Undefined on skills installed before the canonical-store migration.
+   */
+  canonicalPath?: string;
+  /**
    * Original source URL/shorthand as provided by the user.
    * Empty string means source is unknown — skill was imported from disk
    * without a known upstream. Use `augy set-source` to add one later.
@@ -117,6 +123,14 @@ export function versionsDir(): string {
   return join(augyHome(), 'versions');
 }
 
+export function canonicalSkillsDir(): string {
+  return join(augyHome(), 'skills');
+}
+
+export function canonicalSkillPath(name: string): string {
+  return join(canonicalSkillsDir(), name);
+}
+
 export function versionArchivePath(skillName: string, sha: string): string {
   return join(versionsDir(), skillName, sha);
 }
@@ -181,6 +195,7 @@ export function createSkillRecord(opts: {
   agentIds: string[];
   agentPaths: Record<string, string>;
   tap?: string;
+  canonicalPath?: string;
 }): RegistrySkill {
   const now = new Date().toISOString();
   return {
@@ -193,6 +208,7 @@ export function createSkillRecord(opts: {
     updatedAt: now,
     pinned: false,
     tap: opts.tap,
+    canonicalPath: opts.canonicalPath,
     agents: Object.fromEntries(
       opts.agentIds.map((id) => [
         id,
